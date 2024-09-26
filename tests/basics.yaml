@@ -1,0 +1,22 @@
+- config: 01_llms.yaml
+  init: openai_llm
+  query: tell me 2 joke about dog, but one at a time.
+
+- config: 01_llms.yaml
+  init: openai_chat
+  query: tell me a joke about apple.
+
+- config: 02_prompts.yaml
+  init: prompt
+  query: tell me a joke about dog.
+  input_key: question
+
+- config: 02_prompts.yaml
+  init: prompt_from_messages
+  query: tell me a joke about dog.
+  input_key: question
+
+- config: 02_prompts.yaml
+  init: prompt_from_messages_outputs
+  query: tell me a joke about dog.
+  input_key: question

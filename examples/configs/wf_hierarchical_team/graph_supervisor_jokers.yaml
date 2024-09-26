@@ -1,0 +1,80 @@
+name: JokersTeam
+# reset workflow data for re-entering the workflow
+reset_state: true
+# as a sub team, accept `messages` from upstream team, and return `output` to upstream team
+input_mapping:
+  messages: messages
+schema:
+- name: messages  # state field name
+  field_type: messages
+  default: []
+  operator: add
+  required: true
+- name: next # state field name
+  default: ""
+  field_type: str
+- name: question  # state field name
+  field_type: str
+  default: let's go on!
+- name: output  
+  field_type: str
+  operator: add
+  default: '' # '**finished jokes:**\n\n'
+
+vertices:
+- name: supervisor
+  next: branch_0
+  agent: '{{ jokers_supervisor_agent }}'
+  #   config: 'wf_hierarchical_team/graph_agents.yaml'
+  #   name: jokers_supervisor_agent
+  output_mapping:
+    next: next  # output name
+- name: branch_0
+  default: __end__
+  branchs:
+  - conditions:
+    - property: next
+      value: fruit
+    next: fruit_chain
+    # setters:
+    #   property: question  # state field name to set
+    #   value: what's your favorite dog?   # state field name to get
+  - conditions:
+    - property: next
+      value: vegetable
+    next: vegetable_chain
+    # setters:
+      # property: question
+      # value: $query
+  - conditions:
+    - property: next
+      value: animal
+    next: animal_chain
+  # maybe other or FINISH
+- name: fruit_chain
+  next: supervisor
+  agent: '{{ llm_chain_messages_joker }}'
+  #   config: 'wf_hierarchical_team/graph_agents.yaml'
+  #   name: llm_chain_messages_joker
+  output_mapping:
+    messages: output
+    output: output
+- name: vegetable_chain
+  next: supervisor
+  agent: # '{{ llm_chain_messages_joker }}'
+    config: 'wf_hierarchical_team/graph_agents.yaml'
+    name: llm_chain_messages_joker
+  output_mapping:
+    messages: output
+    output: output
+- name: animal_chain
+  next: supervisor
+  agent: '{{ llm_chain_messages_joker }}'   # works when both this config and graph_agents.yaml were included into another config
+  # special config and name to load from yaml file as an external agent
+  #   config: 'wf_hierarchical_team/graph_agents.yaml'
+  #   name: llm_chain_messages_joker
+  output_mapping:
+    messages: output  # chain's `output` is mapped to both `messages` and `output` schema fields
+    output: output
+
+# python cli.py -c graph_supervisor_as_agent.yaml -i graph_supervisor -q "tell me three jokes, one about dog and two about apple, but only one at a time." -I question

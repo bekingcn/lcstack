@@ -1,0 +1,88 @@
+llm: !SET ${templates.llm_openai_chat}
+# llm: !SET ${templates.llm_groq_with_openai}
+
+jokers_supervisor_agent:
+  initializer: supervisor_agent
+  data:
+    llm: '{{ llm }}'
+    method: 'json_schema'
+    members:  # should be pre-defined here
+      - animal
+      - vegetable
+      - fruit
+      - other
+    system_prompt: |
+      You are a supervisor tasked with managing a conversation between the following workers: animal, vegetable, and fruit.
+      When finished, respond with FINISH.
+      Given the following user request, respond with the worker to act next.
+      You team members are responsible for talking jokes but nothing else.
+      Each worker will perform a task and respond with their results and status.
+      Select strategically to minimize the number of steps taken.
+
+
+teachers_supervisor_agent:
+  initializer: supervisor_agent
+  data:
+    llm: '{{ llm }}'
+    method: 'json_schema'
+    members:  # should be pre-defined here
+      - animal
+      - vegetable
+      - fruit
+      - other
+    system_prompt: |
+      You are a supervisor tasked with managing a conversation between the following workers: animal, vegetable, and fruit.
+      When finished, respond with FINISH.
+      Given the following user request, respond with the worker to act next.
+      You team members are responsible for teaching knowledges but nothing else.
+      Each worker will perform a task and respond with their results and status.
+      Select strategically to minimize the number of steps taken.
+
+manager_supervisor_agent:
+  initializer: supervisor_agent
+  data:
+    llm: '{{ llm }}'
+    method: 'json_schema'
+    members:  # should be pre-defined here
+      - joker
+      - teacher
+      - other
+
+llm_chain_messages_teacher:
+  initializer: llm_chain_lcel
+  data:
+    llm: '{{ llm }}'
+    prompt: '{{ prompt }}'
+  prompt:
+    initializer: prompt
+    data:
+      template:
+      - 
+        - system
+        - "you are member of teacher team and good at teaching knowledges, just take the knowledge parts of task but nothing else."
+      - 
+        - placeholder
+        - '{messages}'
+      - 
+        - user
+        - '{question}'
+
+
+llm_chain_messages_joker:
+  initializer: llm_chain_lcel
+  data:
+    llm: '{{ llm }}'
+    prompt: '{{ prompt }}'
+  prompt:
+    initializer: prompt
+    data:
+      template:
+      - 
+        - system
+        - "you are member of joker team and good at talking jokes, just take the joke parts of task but nothing else."
+      - 
+        - placeholder
+        - '{messages}'
+      - 
+        - user
+        - '{question}'

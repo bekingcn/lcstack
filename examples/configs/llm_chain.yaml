@@ -1,0 +1,53 @@
+llm: !SET ${templates.llm_openai_chat}
+
+prompt:
+  initializer: prompt
+  data:
+    template: '{question}'
+
+# This is a example of how to use messages prompt
+prompt_from_messages:
+  initializer: prompt
+  data:
+    template:
+    -
+      - system
+      - "you are a helpful assistant and chat with a human with below history."
+    -
+      - placeholder
+      - '{messages}'
+    -
+      - user
+      - '{question}'
+
+llm_chain:
+  initializer: llm_chain_lcel
+  data:
+    llm: '{{ llm }}'
+    prompt: '{{ prompt }}'
+
+
+llm_chain_messages:
+  initializer: llm_chain_lcel
+  data:
+    llm: '{{ llm }}'
+    prompt: '{{ prompt_from_messages }}'
+
+
+llm_chain_map_output_1:
+  initializer: llm_chain_lcel
+  data:
+    llm: '{{ llm }}'
+    prompt: '{{ prompt }}'
+    output_parser_args:
+      output_type: 'primitive'
+      message_key: output
+
+llm_chain_map_output_2:
+  initializer: llm_chain_lcel
+  data:
+    llm: '{{ llm }}'
+    prompt: '{{ prompt }}'
+    output_parser_args:
+      output_type: 'struct'
+      message_key: chain_result

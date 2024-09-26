@@ -1,0 +1,134 @@
+default:
+  llm:
+    provider: openai
+    tag: chat
+
+# TODO: separate template into separate file templates.yaml
+templates:
+  llm_openai_llm:
+    initializer: llm
+    data:
+      provider: openai
+      tag: llm
+      model: gpt-3.5-turbo
+      temperature: 0.7
+      api_key: !ENV ${OPENAI_API_KEY}
+      base_url: !ENV ${OPENAI_API_BASE}
+
+  llm_openai_chat:
+    initializer: llm
+    data:
+      provider: openai
+      tag: chat
+      model: gpt-3.5-turbo
+      temperature: 0.7
+      api_key: !ENV ${OPENAI_API_KEY}
+      base_url: !ENV ${OPENAI_API_BASE}
+
+  llm_groq_with_openai:
+    initializer: llm
+    data:
+      provider: openai
+      tag: chat
+      # llama-3.1-8b-instant;llama-3.1-70b-versatile;llama3-70b-8192;llama3-8b-8192;llama-guard-3-8b;mixtral-8x7b-32768;gemma2-9b-it;gemma-7b-it
+      model: llama-3.1-70b-versatile
+      temperature: 0.3
+      api_key: !ENV ${GROQ_API_KEY}
+      base_url: !ENV ${GROQ_API_BASE_OPENAI}
+
+  llm_google_chat:
+    initializer: llm
+    data:
+      provider: genai
+      tag: chat
+      # models/gemini-1.5-flash, models/gemini-1.5-pro, models/gemini-pro, models/gemini-1.5-flash-8b-exp-0827
+      model: models/gemini-1.5-flash
+      temperature: 0.5
+      google_api_key: !ENV ${GOOGLE_API_KEY}
+      transport: rest
+
+  embeddings_openai:
+    initializer: embeddings
+    data:
+      provider: openai
+      model: text-embedding-ada-002
+      api_key: !ENV ${OPENAI_API_KEY}
+      base_url: !ENV ${OPENAI_API_BASE}
+
+  embeddings_llmstudio:
+    # OpenAI Embeddings interface
+    initializer: embeddings
+    data:
+      provider: openai
+      model: sentence-transformers/all-MiniLM-L6-v2
+      tiktoken_enabled: false
+      # dimensions: 384
+      openai_api_key: !ENV ${OPENAI_API_KEY}
+      openai_api_base: !ENV ${OPENAI_API_BASE}
+    
+  embeddings_huggingface:
+    initializer: embeddings
+    data:
+      provider: huggingface
+      model_name: sentence-transformers/all-MiniLM-L6-v2
+      encode_kwargs:
+        normalize_embeddings: false
+      model_kwargs:
+        device: cpu
+
+  embeddings_ollama:
+    initializer: embeddings
+    data:
+      provider: ollama
+      model: nomic-embed-text
+
+  vectorstore_chroma:
+    initializer: vectorstore
+    data:
+      provider: chromadb
+      collection_name: mindful_ai_docs
+      embedding_function: '{{ embeddings }}'
+      persist_directory: ./vector_data/lcstack_ai_docs
+
+  vectorstore_duckdb:
+    initializer: vectorstore
+    data:
+      provider: duckdb
+      table_name: mindful_ai_docs
+      embedding: '{{ embeddings }}'
+
+  vectorstore_faiss:
+    initializer: vectorstore
+    data:
+      provider: faiss
+      index: mindful_ai_docs
+      embedding_function: '{{ embeddings }}'
+      # distance_strategy: "EUCLIDEAN_DISTANCE" # default
+  
+  text_splitter:
+    # default text splitter: RecursiveCharacterTextSplitter
+    initializer: text_splitter
+    data:
+      chunk_size: 500
+      chunk_overlap: 200
+      keep_separator: true
+      add_start_index: false
+      strip_whitespace: true
+      separators: null
+      is_separator_regex: false
+
+  tools:
+    tavily_search:
+      initializer: tavily_search
+      data:
+        max_results: 5
+        tavily_api_key: !ENV ${TAVILY_API_KEY}
+  
+    ddg_search:
+      initializer: ddg_search
+      data:
+        max_results: 5
+
+    scrape_webpages:
+      initializer: scrape_webpages
+      data: {}

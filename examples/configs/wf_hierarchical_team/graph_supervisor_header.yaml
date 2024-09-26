@@ -1,0 +1,106 @@
+# TODO: not implemented
+include: graph_agents.yaml
+
+team_jokers:
+  initializer: conditional_graph
+  data:
+    # with !INC to load from yaml from same folder with current file
+    # 'wf_hierarchical_team/graph_supervisor_jokers.yaml'
+    inline: !INC ${graph_supervisor_jokers.yaml}
+    # output_parser_args:
+    #   type: "struct"
+    #   struct_mapping:
+    #     output: "worker_messages"
+
+team_teachers:
+  initializer: conditional_graph
+  data:
+    # with !INC to load from yaml from same folder with current file
+    # 'wf_hierarchical_team/graph_supervisor_teachers.yaml'
+    # inline: !INC ${graph_supervisor_teachers.yaml}
+    # or `file` to load from a yaml file under 'config root' at building time
+    file: wf_hierarchical_team/graph_supervisor_teachers.yaml
+    # output_parser_args:
+    #   output_type: "struct"
+    #   struct_mapping:
+    #     output: "worker_messages"   # mapping `worker_messages` to `output` field
+
+teams_manager:
+  initializer: conditional_graph
+  data:
+    inline:
+      name: SupervisorHeader
+      reset_state: false  # top level state is not reset
+      input_mapping:
+        messages: query  # mapping input `query` to schema's `messages` and `query`
+        query: query
+      schema:
+      - name: messages  # schema field name
+        field_type: messages  # output list of messages
+        default: []
+        operator: add
+        required: true
+      - name: query  # schema field name
+        field_type: str
+        default: let's go on!
+      - name: next  # schema field name
+        field_type: str
+      - name: worker_messages   # just for outputing string, not used
+        field_type: str
+        operator: add
+        default: ''
+
+      vertices:
+      - name: supervisor
+        next: branch_0
+        agent: '{{ manager_supervisor_agent }}'
+        #   config: 'wf_hierarchical_team/graph_agents.yaml'
+        #   name: manager_supervisor_agent
+        output_mapping:
+          next: next
+      - name: branch_0
+        default: __end__
+        branchs:
+        - conditions:
+          - property: next
+            value: joker
+          next: team_jokers
+          setters:
+          - property: query  # schema field name to set
+            value: $state.query   # schema field name to get
+        - conditions:
+          - property: next
+            value: teacher
+          next: team_teachers
+          setters:
+          - property: query  # schema field name to set
+            value: $state.query   # schema field name to get
+        # maybe other or FINISH
+      - name: team_jokers
+        next: supervisor
+        # TODO: what's the right inputs? {"messages": [...]}
+        agent: '{{team_jokers}}'
+        output_mapping:
+          messages: output  # this workflow's `output` is added to `messages` to get all conversations
+          worker_messages: output
+      - name: team_teachers
+        next: supervisor
+        agent: '{{team_teachers}}'
+        output_mapping:
+          messages: output
+          worker_messages: output
+  # this is a child level component
+  team_teachers_in_children:
+    initializer: conditional_graph
+    data:
+      # with !INC to load from yaml from same folder with current file
+      # 'wf_hierarchical_team/graph_supervisor_teachers.yaml'
+      inline: !INC ${graph_supervisor_teachers.yaml}
+      # output_parser_args:
+      #   type: "struct"
+      #   struct_mapping:
+      #     output: "worker_messages"
+# TODO:
+#   - works, but some LLMs not following instructions well. Maybe we need planner to plan the next steps with more specific instructions.
+
+# python cli.py -c wf_hierarchical_team/graph_supervisor_header.yaml -i teams_manager -q "tell me three jokes first, one about dog and two about apple, but only one at a time; and then teach me 2 knowledges, one about dog, and one about apple" -I query

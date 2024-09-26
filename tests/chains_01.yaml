@@ -1,0 +1,63 @@
+- config: 11_llm_chain.yaml
+  init: llm_chain
+  query: tell me a joke about dog.
+  input_key: question
+
+- config: 12_basic_chains.yaml
+  init: document_qa_chain
+  kwargs:
+    query: what is lcstack?
+    file_path: ./README.md
+
+- config: 12_basic_chains.yaml
+  init: indexing_pipeline
+  kwargs:
+    file_path: ./README.md
+
+- config: 12_basic_chains.yaml
+  init: retriever
+  query: what is lcstack?
+
+- config: 12_basic_chains.yaml
+  init: retrieval_chain
+  query: what is lcstack?
+  input_key: question
+
+# TODO:
+- config: 12_basic_chains.yaml
+  init: retrieval_chain
+  name: retrieval_chain_with_filter
+  kwargs:
+    question: what is lcstack?
+    search_kwargs:
+      filter:
+        # file_id: e99dbc66-5586-4068-9e07-a9c97b76ed6d
+        source: './README.md'
+
+# TODO:
+- config: 12_basic_chains.yaml
+  init: retrieval_qa_with_sources_chain
+  kwargs:
+    question: what is lcstack?
+    search_kwargs:
+      filter:
+        # file_id: e99dbc66-5586-4068-9e07-a9c97b76ed6d
+        source: './README.md'
+
+- config: 12_basic_chains.yaml
+  init: router_chain
+  query: tell me a joke about dog.
+  input_key: query
+
+- config: 12_basic_chains.yaml
+  init: router_chain
+  name: router_chain_with_members
+  kwargs:
+    query: tell me something about money.
+    members: ["Finance", "Social", "Politics", "Other"]
+
+# - config: 12_basic_chains.yaml
+#   init: sql_query_chain
+#   kwargs:
+#     qustion: how many employees are there?
+#     # table_names_to_use: ["employees", "employees2"]

@@ -1,0 +1,19 @@
+name: SimpleGraph
+input_mapping:
+  question: question
+schema:
+- name: question  # state field name
+  field_type: str
+  required: true
+- name: not_used  # state field name
+  field_type: str
+  default: 'this is a not used field'
+- name: response
+  field_type: str
+vertices:
+- name: llm_chain
+  agent: '{{ llm_chain }}'  # ref like other chains
+    # config: llm_chain.yaml    # ref by config file
+    # name: llm_chain
+  output_mapping:
+    response: output

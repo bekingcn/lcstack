@@ -1,0 +1,14 @@
+llm: !SET ${templates.llm_openai_chat}
+
+prompt:
+  initializer: prompt
+  data:
+    template: '{question}'
+
+llm_chain:
+  initializer: llm_chain_lcel
+  data:
+    llm: '{{ llm }}'
+    prompt: '{{ prompt }}'
+    outputs:
+      output: response    # to_key: from_key

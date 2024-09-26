@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "lcstack"
+version = "0.1.1"
+description = ""
+authors = ["Beking <beking_cn@hotmail.com>"]
+license = "Apache"
+readme = "README.md"
+packages = [{ include = "lcstack" }]
+repository = "https://github.com/bekingcn/lcstack"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+openai = "^1.45.0"
+langchain = "^0.3"
+langchain-community = "^0.3"
+langchain-openai = "^0.2"
+langgraph = "^0.2.20"
+langchain-chroma = ">=0.1.4"
+langchain-groq = ">=0.2"
+langchain-google-genai = ">=2"
+langchain-ollama = ">=0.2"
+langchain-huggingface = ">=0.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

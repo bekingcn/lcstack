@@ -1,0 +1,8 @@
+graph_supervisor:
+  initializer: conditional_graph
+  data:
+    config: 'wf_hierarchical_team/graph_supervisor_jokers.yaml'
+    outputs:
+    - messages
+
+# python cli.py -c graph_supervisor_as_agent.yaml -i graph_supervisor -q "tell me three jokes, one about dog and two about apple, but only one at a time." -I question

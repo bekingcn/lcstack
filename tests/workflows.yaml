@@ -1,0 +1,29 @@
+- config: 31_graph_simple_as_agent.yaml
+  init: graph_simple
+  input_key: question
+  kwargs:
+  output_key: null
+  query: tell me 2 joke about dog, but one at a time.
+
+- config: 31_graph_simple_as_agent.yaml
+  init: graph_simple_from_file
+  input_key: question
+  kwargs:
+  output_key: null
+  query: tell me 2 joke about dog, but one at a time.
+
+- config: graph_supervisor_as_agent.yaml
+  init: graph_supervisor
+  query: tell me a joke about apple.
+  input_key: query
+  kwargs:
+  output_key: null
+
+- config: graph_supervisor_as_agent.yaml
+  init: graph_supervisor
+  name: graph_supervisor_args
+  kwargs:
+    query: tell me a joke about dog.
+  input_key: null
+  output_key: null
+  query: 

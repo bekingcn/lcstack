@@ -1,0 +1,3 @@
+openai_llm: !SET ${templates.llm_openai_llm}
+
+openai_chat: !SET ${templates.llm_openai_chat}

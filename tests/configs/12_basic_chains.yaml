@@ -1,0 +1,83 @@
+embeddings: !SET ${templates.embeddings_huggingface}
+
+# vectorstore: !SET ${templates.vectorstore_chroma}
+vectorstore:
+  initializer: vectorstore
+  data:
+    provider: chromadb
+    collection_name: mindful_ai_docs
+    embedding_function: '{{ embeddings }}'
+    persist_directory: ./vectorstores/mindful_ai_docs
+    delete_existing: true
+
+text_splitter: !SET ${templates.text_splitter}
+
+document_loader:
+  initializer: document_loader
+
+text_loader:
+  initializer: typed_document_loader
+  data:
+    loader_class: langchain_community.document_loaders.TextLoader
+
+indexing_pipeline:
+  initializer: indexing_pipeline
+  data:
+    vectorstore: '{{ vectorstore }}'
+    document_loader_chain: '{{ document_loader }}'
+    text_splitter: '{{ text_splitter }}'
+    # extensions: null
+
+retriever:
+  initializer: retriever
+  data:
+    search_kwargs: {}
+    vectorstore: '{{ vectorstore }}'
+
+llm: !SET ${templates.llm_openai_chat}
+
+retrieval_chain:
+  initializer: retrieval_chain
+  data:
+    llm: '{{ llm }}'
+    retriever: '{{ retriever }}'
+    outputs:
+      - 'output'
+
+document_qa_chain:
+  initializer: document_qa_chain
+  data:
+    llm: '{{ llm }}'
+    text_splitter: '{{ text_splitter }}'
+
+retrieval_qa_with_sources_chain:
+  initializer: retrieval_qa_with_sources_chain
+  data:
+    llm: '{{ llm }}'
+    retriever: '{{ retriever }}'
+    outputs:
+      - 'output'
+      - 'sources'
+
+# TODO:
+# sql_query_chain:
+#   initializer: sql_query_chain
+#   data:
+#     llm: '{{ llm }}'
+#     db_uri: ''
+#     outputs:
+#       - 'output'
+#       - 'sources'
+
+router_chain:
+  initializer: router_chain
+  data:
+    llm: '{{ llm }}'
+    method: 'json_schema'
+    # system_prompt: """  SYSTEM PROMPT  """
+    default_members:  # could be overridden with input
+      # "animal", "vegetable", "mineral", "other"
+      - animal
+      - vegetable
+      - fruit      
+      - other

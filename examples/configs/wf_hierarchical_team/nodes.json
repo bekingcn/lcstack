@@ -1,0 +1,13 @@
+{
+    "llm": "llm\ninitializer: llm\nprovider: openai_chat",
+    "manager_supervisor_agent": "manager_supervisor_agent\ninitializer: supervisor_agent\nname: create_supervisor",
+    "jokers_supervisor_agent": "jokers_supervisor_agent\ninitializer: supervisor_agent\nname: create_supervisor",
+    "llm_chain_messages_joker": "llm_chain_messages_joker\ninitializer: llm_chain_lcel\nname: create_llm_chain",
+    "llm_chain_messages_joker::prompt": "llm_chain_messages_joker::prompt\ninitializer: prompt\nname: load_prompt",
+    "team_jokers": "team_jokers\ninitializer: conditional_graph\nname: create_workflow_agent",
+    "teachers_supervisor_agent": "teachers_supervisor_agent\ninitializer: supervisor_agent\nname: create_supervisor",
+    "llm_chain_messages_teacher": "llm_chain_messages_teacher\ninitializer: llm_chain_lcel\nname: create_llm_chain",
+    "llm_chain_messages_teacher::prompt": "llm_chain_messages_teacher::prompt\ninitializer: prompt\nname: load_prompt",
+    "team_teachers": "team_teachers\ninitializer: conditional_graph\nname: create_workflow_agent",
+    "teams_manager": "teams_manager\ninitializer: conditional_graph\nname: create_workflow_agent"
+}

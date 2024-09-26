@@ -1,0 +1,86 @@
+embeddings: !SET ${templates.embeddings_huggingface}
+vectorstore: !SET ${templates.vectorstore_chroma}
+text_splitter: !SET ${templates.text_splitter}
+
+document_loader:
+  # default document loader: GenericDocumentLoader, process multiple types of files
+  # include: pdf, doc, docx, txt, csv, html, etc.
+  initializer: document_loader
+
+text_loader:
+  # a typed document loader with specific loader class and its args.
+  initializer: typed_document_loader
+  data:
+    loader_class: langchain_community.document_loaders.TextLoader
+
+indexing_pipeline:
+  initializer: indexing_pipeline
+  data:
+    vectorstore: '{{ vectorstore }}'
+    document_loader_chain: '{{ document_loader }}'
+    text_splitter: '{{ text_splitter }}'
+    # extensions: null  # optional, null by default and will load all supported files
+
+retriever:
+  initializer: retriever
+  data:
+    search_kwargs: {}
+    vectorstore: '{{ vectorstore }}'
+
+llm: !SET ${templates.llm_openai_chat}
+
+retrieval_chain:
+  initializer: retrieval_chain
+  data:
+    llm: '{{ llm }}'
+    retriever: '{{ retriever }}'
+
+# response the reference sources of the answer
+retrieval_with_sourecs_chain:
+  initializer: retrieval_qa_with_sources_chain
+  data:
+    llm: '{{ llm }}'
+    retriever: '{{ retriever }}'
+
+document_qa_chain:
+  initializer: document_qa_chain
+  data:
+    llm: '{{ llm }}'
+    text_splitter: '{{ text_splitter }}'
+
+router_chain:
+  initializer: router_chain
+  data:
+    llm: '{{ llm }}'
+    method: 'json_schema'
+    # system_prompt: """  SYSTEM PROMPT  """
+    default_members:  # could be overridden with input
+      # "animal", "vegetable", "mineral", "other"
+      - animal
+      - vegetable
+      - fruit      
+      - other
+
+sql_query_chain:
+  initializer: sql_query_chain
+  data:
+    llm: '{{ llm }}'
+    # prompt: '{{ prompt }}'  # optional
+    db_uri: 'sqlite:///chinook.db'
+    db_engine_args: {}
+    db_kwargs: 
+      schema: null
+      metadata: null
+      ignore_tables: null
+      include_tables: null
+      sample_rows_in_table_info: 0  # default: 3
+      indexes_in_table_info: False
+      custom_table_info: null
+      view_support: false
+      max_string_length: 300
+      lazy_table_reflection: false
+  # Note: specify the prompt here, which could only be used by the sql_query_chain
+  prompt:
+    initializer: prompt
+    data:
+      template: 'YOUR PROMPT HERE'
