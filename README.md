@@ -33,7 +33,7 @@ pip install -U lcstack
   - PromptTemplate
   - Embedding
   - VectorStore
-  - Memory
+  - Memory / Chat History
   - Tools
 - LangChain Chains
   - LLM Chain

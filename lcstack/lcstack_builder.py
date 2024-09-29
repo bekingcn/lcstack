@@ -26,12 +26,14 @@ class YamlBuilder:
 
     @classmethod
     def from_yaml(cls, yaml: str):
+        """Construct from a yaml file."""
         instance = cls()
         instance.config_file = get_config_root() / yaml
         return instance
     
     @classmethod
     def from_object(cls, obj):
+        """Construct from an str or dict object."""
         instance = cls()
         instance.config = obj
         return instance
@@ -118,9 +120,6 @@ class YamlBuilder:
                 # merge templates with settings which may contain the templates key
                 tags[TAG_NAME_SET]["templates"] = {**tags[TAG_NAME_SET].get("templates", {}), **templates}
 
-        # always support including other yaml files, 
-        # for now only support configs in the same directory or sub-directories
-        config_dir = Path(self.config_file).parent
         def _get_include(relative_path, default=None):
             if os.path.isfile(config_dir / relative_path):                
                 with open(config_dir / relative_path, "r") as f:
@@ -132,16 +131,23 @@ class YamlBuilder:
                 
         # load config from file
         if self.config_file:
+            # always support including other yaml files, 
+            # for now only support configs in the same directory or sub-directories
+            config_dir = Path(self.config_file).parent
             with open(self.config_file, "r") as f:
                 config = parse_config(f, tags=tags)
         # config is string, parse it with tags
         elif self.config and isinstance(self.config, str):
+            # include other config files under current directory
+            config_dir = Path.cwd()
             config = parse_config(data=self.config, tags=tags)        
         # config is a dict and tags are provided, re-generate config with tags
         elif self.config and tags and isinstance(self.config, dict):
+            # in this case, support `include` only, tags is not supported
+            config_dir = Path.cwd()
             config = parse_config(data=yaml.dump(self.config), tags=tags)
         else:
-            config = self.config
+            raise ValueError("config or config_file must be provided")
             
         # support `include` to include and merge other config files
         if FIELD_NAME_INCLUDE in config:
@@ -164,7 +170,8 @@ class YamlBuilder:
             config = self._merge_config(config)
 
         return config
-        
+
+    # will be implemented by subclasses        
     def build(self) -> any:
         pass
     

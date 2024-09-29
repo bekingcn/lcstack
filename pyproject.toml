@@ -15,11 +15,25 @@ langchain = "^0.3"
 langchain-community = "^0.3"
 langchain-openai = "^0.2"
 langgraph = "^0.2.20"
-langchain-chroma = ">=0.1.4"
 langchain-groq = ">=0.2"
 langchain-google-genai = ">=2"
 langchain-ollama = ">=0.2"
-langchain-huggingface = ">=0.1"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=7.4.0"
+pytest-asyncio = ">=0.21.1"
+coverage = ">=7.3.2"
+pyright = ">1.1.360"
+jsonref = ">=1.1.0"
+
+
+[tool.poetry.group.huggingface.dependencies]
+langchain-huggingface = "^0.1"
+
+
+[tool.poetry.group.chroma.dependencies]
+langchain-chroma = "^0.1.4"
 
 
 [build-system]
