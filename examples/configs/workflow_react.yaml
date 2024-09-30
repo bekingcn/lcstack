@@ -13,7 +13,7 @@ llm_with_tools:
     provider: ollama
     tag: chat
     tools: '{{ tool_node }}'
-    model: qwen2.5
+    model: llama3.2 # qwen2.5
     temperature: 0.3
   
 
@@ -42,8 +42,8 @@ workflow_react:
         next: branch_0
         input_mapping: messages  # pop `messages` from schema
         output_mapping:
-          messages: output
-          output: output
+          messages: # output  # map llm output to `messages`
+          output: # output    # map llm output to `output`
       - name: branch_0
         default: __end__
         branchs:
@@ -56,3 +56,4 @@ workflow_react:
         agent: '{{ tool_node }}'
         next: llm_node
 
+# python cli.py -c workflow_react.yaml -i workflow_react -q "Trump's recent news?" -I query -O output

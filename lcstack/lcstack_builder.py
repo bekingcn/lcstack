@@ -145,7 +145,8 @@ class YamlBuilder:
         elif self.config and tags and isinstance(self.config, dict):
             # in this case, support `include` only, tags is not supported
             config_dir = Path.cwd()
-            config = parse_config(data=yaml.dump(self.config), tags=tags)
+            # no need to re-generate config
+            config = self.config # parse_config(data=yaml.dump(self.config), tags=tags)
         else:
             raise ValueError("config or config_file must be provided")
             

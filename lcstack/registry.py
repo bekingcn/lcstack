@@ -35,6 +35,7 @@ from .components.agents import (
     create_tool_node
 )
 from .components.converters import create_data_parser
+from .components.output_parser import create_output_parser
 
 from .core.parsers import DataType
 from .core.component import Component, ComponentType, LcComponent
@@ -85,6 +86,16 @@ register_component("data_parser", LcComponent(
     params={},
     component_type=ComponentType.DataConverter,
     default_output_parser_args=default_output_parser_args_with_type(DataType.pass_through),
+))
+
+# converting llm or chat model outputs to specific format
+#   type: "str", "json", "comma_separated_list", "markdown_list", "numbered_list", "json_tools", "pydantic_tools".
+register_component("lc_output_parser", LcComponent(
+    name="lc_output_parser",
+    description="Langchain Output Parser",
+    func_or_class=create_output_parser,
+    params={},
+    component_type=ComponentType.DataConverter,
 ))
 
 ## common runnables

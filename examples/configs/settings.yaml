@@ -36,6 +36,15 @@ templates:
       api_key: !ENV ${GROQ_API_KEY}
       base_url: !ENV ${GROQ_API_BASE_OPENAI}
 
+  llm_ollama:
+    initializer: llm
+    data:
+      provider: ollama
+      tag: chat
+      # llama3.2, llama3.1, qwen2.5
+      model: llama3.2
+      temperature: 0.3
+
   llm_google_chat:
     initializer: llm
     data:

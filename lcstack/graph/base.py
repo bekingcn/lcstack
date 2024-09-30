@@ -84,7 +84,7 @@ class CallableVertex(BaseVertex):
     # for input_mapping, value is the input name
     # if input_mapping is not dict, it will pop the key as input (if is MappingParserArgs, will be converted to output type)
     input_mapping: Union[str, NamedMappingParserArgs, Dict[Optional[str], Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
-    output_mapping: Dict[str, Union[str, NamedMappingParserArgs]] = Field(default_factory=dict)
+    output_mapping: Dict[str, Optional[Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -351,17 +351,20 @@ class Workflow:
             ret = {}
             # convert the output to a dict
             if isinstance(outputs, (str, BaseMessage)):
-                warning(f"output is a string or BaseMessage, expected a dict. Forcing it to be a dict.")
-                # TODO: multiple state names mapping to this output? any side effects?
-                new_outputs = {}
-                for oname in output_mapping.values():
-                    if isinstance(oname, str):
-                        new_outputs = {oname: outputs}
-                    elif isinstance(oname, NamedMappingParserArgs):
-                        new_outputs = {oname.name: outputs}
-                outputs = new_outputs
-                
-            if isinstance(outputs, dict):
+                # support mapping with a string or BaseMessage to schema field
+                for sname, oname in output_mapping.items():
+                    field = self.schema_fields_map.get(sname, None)
+                    if not field:
+                        raise ValueError(f"Unsupported state name for output mapping: {sname}")
+                    # must be None
+                    if oname is None:
+                        ret[sname] = parse_data_with_type(
+                            outputs,
+                            to_parsed_type(field.field_type)
+                        )
+                    else:
+                        raise ValueError(f"Unsupported output mapping from `{oname}` with a string or BaseMessage")                
+            elif isinstance(outputs, dict):
                 # default mapping
                 if not output_mapping:
                     # add mapping, in case of type mismatch

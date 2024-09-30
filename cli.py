@@ -6,7 +6,7 @@ from lcstack import set_config_root
 import sys
 
 if __name__ == "__main__":
-    set_config_root("data/configs")
+    set_config_root("examples/configs")
     
     client = Client()
     inputs = client.query

@@ -35,6 +35,8 @@ langchain-huggingface = "^0.1"
 [tool.poetry.group.chroma.dependencies]
 langchain-chroma = "^0.1.4"
 
+[tool.coverage.report]
+show_missing = true
 
 [build-system]
 requires = ["poetry-core"]

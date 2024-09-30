@@ -142,5 +142,5 @@ class Client:
             response = self._default_exit_func(response)
         else:
             response = app.invoke(inputs, run_config)
-            # response = self._default_exit_func(response)
+            response = self._default_exit_func(response)
         return response
