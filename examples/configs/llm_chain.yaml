@@ -39,15 +39,19 @@ llm_chain_map_output_1:
   data:
     llm: '{{ llm }}'
     prompt: '{{ prompt }}'
-    output_parser_args:
-      output_type: 'primitive'
-      message_key: output
+    output_mapping:
+      # expect: str
+      null:
+        name: null
+        output_type: 'primitive'
 
 llm_chain_map_output_2:
   initializer: llm_chain_lcel
   data:
     llm: '{{ llm }}'
     prompt: '{{ prompt }}'
-    output_parser_args:
-      output_type: 'struct'
-      message_key: chain_result
+    output_mapping:
+      # expect: {"chain_result": "AIMessage(...)"} 
+      chian_result:
+        name: null
+        output_type: 'struct'

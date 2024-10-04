@@ -90,7 +90,7 @@ class Client:
         if self.verbose:
             print("inputs: ", inputs)
             
-        from langchain_core.tracers.stdout import ConsoleCallbackHandler
+        from .components.tracers.console import ConsoleCallbackHandler
         from .base import LcStackBuilder
         from .tracers import JsonCallbackHandler
         
@@ -127,7 +127,7 @@ class Client:
 
         callbacks = []
         if self.verbose:
-            callbacks.append(ConsoleCallbackHandler())
+            callbacks.append(ConsoleCallbackHandler(callbacks=["llm", "chain", "agent", "retriever",])) # , "chain", "agent", "retriever", "custom_event", "retry"
         if self.trace:
             callbacks.append(JsonCallbackHandler())
         session_id = self.session or f"{self.init}_{uuid.uuid4().hex[:8]}"

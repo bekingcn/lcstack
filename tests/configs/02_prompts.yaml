@@ -32,5 +32,7 @@ prompt_from_messages_outputs:
     -
       - user
       - '{question}'
-    output_parser_args:
-      output_type: 'primitive'
+    output_mapping:
+      null:
+        name: null
+        output_type: 'primitive'

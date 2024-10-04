@@ -6,10 +6,6 @@ team_jokers:
     # with !INC to load from yaml from same folder with current file
     # 'wf_hierarchical_team/graph_supervisor_jokers.yaml'
     inline: !INC ${graph_supervisor_jokers.yaml}
-    # output_parser_args:
-    #   output_type: "struct"
-    #   struct_mapping:
-    #     output: "worker_messages"
 
 team_teachers:
   initializer: conditional_graph
@@ -19,10 +15,6 @@ team_teachers:
     # inline: !INC ${graph_supervisor_teachers.yaml}
     # or `file` to load from a yaml file under 'config root' at building time
     file: wf_hierarchical_team/graph_supervisor_teachers.yaml
-    # output_parser_args:
-    #   output_type: "struct"
-    #   struct_mapping:
-    #     output: "worker_messages"   # mapping `worker_messages` to `output` field
 
 teams_manager:
   initializer: conditional_graph
@@ -95,10 +87,6 @@ teams_manager:
       # with !INC to load from yaml from same folder with current file
       # 'wf_hierarchical_team/graph_supervisor_teachers.yaml'
       inline: !INC ${graph_supervisor_teachers.yaml}
-      # output_parser_args:
-      #   type: "struct"
-      #   struct_mapping:
-      #     output: "worker_messages"
 # TODO:
 #   - works, but some LLMs not following instructions well. Maybe we need planner to plan the next steps with more specific instructions.
 

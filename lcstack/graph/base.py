@@ -11,10 +11,10 @@ from langchain_core.runnables import Runnable, RunnableLambda
 from langgraph.graph import START, END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
-from lcstack.core.parsers import NamedMappingParserArgs
+from lcstack.core.parsers import NamedMappingParserArgs, rebuild_struct_mapping, parse_data_with_struct_mapping
 from lcstack.registry import get_component
 
-from ..core.parsers import DataType, parse_data_with_type, default_value_with_type
+from ..core.parsers import DataType, parse_data_with_type, default_value_with_type, rebuild_struct_mapping
 from ..core.container import RunnableContainer
 
 NAME_BRANCH_STEPS = "branch__steps__"
@@ -81,9 +81,19 @@ class CallableVertex(BaseVertex):
     agent: Union[str, AgentConfig, Callable, Any]    # Any: RunnableContainer
     """agent config file path, `[config].yaml:[agent name]`, config file path and name, or parsed agent"""
     # key is schema field name, value is input or output name
-    # for input_mapping, value is the input name
-    # if input_mapping is not dict, it will pop the key as input (if is MappingParserArgs, will be converted to output type)
-    input_mapping: Union[str, NamedMappingParserArgs, Dict[Optional[str], Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
+    # convertion: struct -> any
+    # str, pop from input as node input
+    # dict key:
+    #   - None or _, as above, pop from input as node input
+    # dict value:
+    #   - str, input field name, align to state field type
+    #   - NamedMappingParserArgs, convert following args
+    input_mapping: Union[str, Dict[Optional[str], Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
+    # convertion: any -> struct
+    # dict value:
+    #   - None or _, keyed (dict key) value with input, {[dict key]: ...}
+    #   - str, output field name, align to state field type
+    #   - NamedMappingParserArgs, convert following args
     output_mapping: Dict[str, Optional[Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
 
     def __init__(self, **data):
@@ -94,12 +104,14 @@ class CallableVertex(BaseVertex):
             if not config or not name.strip():
                 raise ValueError(f"Invalid agent config `{self.agent}`, should be `config_file:agent_name`")
             self.agent = AgentConfig(config=config.strip(), name=name.strip())
-
-        if isinstance(self.input_mapping, str):
-            self.input_mapping = {None: NamedMappingParserArgs(name=self.input_mapping, output_type=DataType.pass_through)}
-        elif isinstance(self.input_mapping, NamedMappingParserArgs):
-            self.input_mapping = {None: self.input_mapping}
-
+        
+        input_mapping = {}
+        for k, v in self.input_mapping.items():
+            if k == "_":
+                input_mapping[None] = v
+            else:
+                input_mapping[k] = v
+        self.input_mapping = rebuild_struct_mapping(input_mapping)
 
 class BaseWorkflowModel(BaseModel):
     name: Optional[str]
@@ -107,8 +119,10 @@ class BaseWorkflowModel(BaseModel):
     # TODO: resolve: UserWarning: Field name "schema" shadows an attribute in parent "BaseModel
     schema_: List[FieldConfig] = Field(default_factory=list[FieldConfig], alias="schema")
     # map schema (state) name to input name
-    input_mapping: Optional[Dict[str, str]] = {}
-    reset_state: Optional[bool] = Field(default=False)
+    # convertion: any -> struct
+    # same as CallableVertex.output_mapping
+    input_mapping: Dict[str, Optional[Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
+    reset_state: bool = Field(default=False)
 
 ## helper functions
 
@@ -155,6 +169,13 @@ def typed_dict_create_model(model_name, fields: List[FieldConfig]):
                 _type = Annotated[_type, operator.add]
         new_fields[field_name] = _type
     return TypedDict(model_name, new_fields)
+
+def is_primitive_field(name: Optional[str]) -> bool:
+    if name is None:
+        return True
+    if isinstance(name, str):
+        return name == "_"
+    raise ValueError(f"Invalid name type `{name}`")
 
 class Workflow:
     def __init__(self, model: BaseWorkflowModel):
@@ -216,6 +237,45 @@ class Workflow:
         workflow = self.graph.compile(checkpointer=self.checkpoint)
         return workflow
     
+    def _data_to_state(self, data, mapping: Dict[str, Optional[Union[str, NamedMappingParserArgs]]]) -> Dict[str, Any]:
+        
+        ret = {}
+        if (isinstance(data, (str, BaseMessage, list)) 
+            and len(mapping) > 0
+            and all(f.name is None for f in mapping.values())
+        ):
+            # support mapping with a string or BaseMessage to schema field
+            for sname, oname in mapping.items():
+                # must be None or `_`
+                args = oname.model_dump()
+                args.pop("name", None)
+                ret[sname] = parse_data_with_type(
+                    data,
+                    **args
+                )
+        elif isinstance(data, dict):
+            print("==>", data)
+            ret = parse_data_with_type(
+                data, 
+                output_type=DataType.struct, 
+                struct_mapping=mapping, 
+                known_data_type=DataType.struct
+            )
+        # add the missing fields and convert to state type
+        for sname, oname in data.items():
+            if sname not in mapping and sname in self.schema_fields_map:
+                field = self.schema_fields_map[sname]
+                # TODO: to be checked for any side effects. 
+                # or simply: ret[sname] = data[sname]
+                ret[sname] = parse_data_with_type(
+                    data[sname],
+                    # align the type with default parser args
+                    output_type=to_parsed_type(field.field_type),
+                )
+        else:
+            raise ValueError(f"Unsupported output type: {type(data)} \nwith mapping: {mapping}")
+        return ret
+    
     def _enter_graph(self, inputs, config=None):
         """_summary_
 
@@ -238,10 +298,8 @@ class Workflow:
             warning(f"reset state in workflow `{self.name}` for thread `{thread_id}`")
             self.checkpoint.storage.clear()
         
-        outputs = {}
         # convert mapping to dict[str, str]
         input_mapping = {sn: inn.name if isinstance(inn, NamedMappingParserArgs) else inn for sn, inn in self.input_mapping.items()}
-        start_vertex_name = self.start_nodes[0].name
         
         # all required fields should be in the inputs
         try:
@@ -251,156 +309,75 @@ class Workflow:
                 raise ValueError(f"required fields {missing_keys} are missing in workflow {self.name}'s inputs mapping")
         except KeyError:
             raise ValueError(f"input mapping should include all required fields")
-
-        # force convert the inputs to dict
-        # TODO: shuold do this?
         
-        optional_key = list(required_keys)[0] if required_keys else list(input_mapping.values())[0] if len(input_mapping) > 0 else self.schema[0].name
-        if isinstance(inputs, str):
-            warning(f"input is a string, converting it to a dict with key {required_keys[0]}")
-            inputs = {optional_key: inputs}
-        if isinstance(inputs, dict):
-            # process unaligned inputs with one key, mapping to the required key or the first one
-            if len(inputs) == 1 and len(required_keys) <= 1:
-                actual_key, val = list(inputs.items())[0]
-                if actual_key != optional_key and actual_key not in list(input_mapping.values()):
-                    warning(f"input key `{actual_key}`is different from required key `{optional_key}`, converting it to `{optional_key}`")
-                    inputs = {optional_key: val}
-            missing_keys = required_keys.difference(inputs.keys())
-            if len(missing_keys) > 0:
-                raise ValueError(f"required fields {missing_keys} are missing in workflow {self.name}'s inputs")
-        else:
-            raise ValueError(f"inputs are not a dict or a plain value, failed to be aligned with required keys")
+        # TODO: should force to align the input names with the schema if not matching? 
+        #   removed the previous implementation, to find from history code if needed
         
-        for f in self.schema:
-            sname = f.name
-            iname = self.input_mapping.get(sname, None)
-            if not iname:
-                # fill with default values
-                outputs[sname] = self._default_dict.get(sname, None)
-            elif isinstance(iname, str) and iname in inputs:
-                outputs[sname] = (
-                    parse_data_with_type(
-                        inputs[iname], 
-                        to_parsed_type(f.field_type), 
-                        message_role="human",
-                        message_name="input"
-                    )
-                    if not f.converter
-                    else f.converter(inputs[iname])
+        # re-build the output mapping first
+        new_mapping: Dict[str, NamedMappingParserArgs] = {}
+        for sname, oname in self.input_mapping.items():
+            field = self.schema_fields_map.get(sname, None)
+            if not field:
+                raise ValueError(f"Unsupported state name for output mapping: {sname}")
+            # must be None
+            if is_primitive_field(oname) or isinstance(oname, str):
+                new_mapping[sname] = NamedMappingParserArgs(
+                    name=None if is_primitive_field(oname) else oname,
+                    output_type=to_parsed_type(field.field_type),
+                    message_role="human",
+                    message_name="input",
                 )
-            elif isinstance(iname, NamedMappingParserArgs) and iname.name in inputs:
-                # support with NamedMappingParserArgs
-                args = iname.model_dump()
-                output_name = args.pop("name")
-                outputs[sname] = parse_data_with_type(
-                    inputs[output_name],
-                    to_parsed_type(f.field_type),
-                    **args
-                )
+                # TODO: process the given converter function 
+                if field.converter:
+                    pass
+            elif isinstance(oname, NamedMappingParserArgs):
+                oname.name = None if is_primitive_field(oname.name) else oname.name
+                new_mapping[sname] = oname
             else:
-                raise ValueError(f"Unsupported input mapping: {iname}")
+                raise ValueError(f"Unsupported output mapping from `{oname}`")
+        ret = self._data_to_state(inputs, new_mapping)
+        # add the default values
+        ret = {**self._default_dict, **ret}
 
-        return outputs # {**inputs, **outputs}
+        return ret # {**inputs, **outputs}
 
-    def _enter_node_func(self, node_name: str, input_mapping: Dict):
+    def _enter_node_func(self, node_name: str, input_mapping: Dict[Optional[str], NamedMappingParserArgs]):
         def _func(state):
             # save a copy of the state
             state_snapshot = deepcopy(state)
             self.intermediate_steps.append((node_name, state_snapshot, ))
 
-            state = parse_data_with_type(
-                state,
-                output_type=DataType.struct,
-                known_data_type=DataType.struct,
-                struct_mapping=input_mapping,
-            )
-            # state name -> input name
-            # for sname, iname in input_mapping.items():
-            #     # tricky case: if only one mapping and sname is None, return the keyed value by `iname`
-            #     if (sname is None or sname == "__") and len(input_mapping) == 1:
-            #         return state[iname]
-            #     # should not happen here if input_mapping is checked
-            #     if sname not in state:
-            #         raise ValueError(f"Required state {sname} is missing")
-            #     if isinstance(iname, str):
-            #         # re-map the state to the node input
-            #         if sname in state and iname != sname:
-            #             state[iname] = state[sname]
-            #     elif isinstance(iname, NamedMappingParserArgs):
-            #         # support with NamedMappingParserArgs
-            #         args = iname.model_dump()
-            #         field = self.schema_fields_map[sname]
-            #         output_name = args.pop("name")
-            #         output_type=args.pop("output_type"),
-            #         state[iname] = parse_data_with_type(
-            #             state[output_name],
-            #             output_type=output_type,
-            #             known_data_type=to_parsed_type(field.field_type),
-            #             **args
-            #         )
-            #     else:
-            #         raise ValueError(f"Unsupported input mapping: {iname}")
-            return state
+            # pop the value when it is None
+            return parse_data_with_struct_mapping(state, input_mapping)
 
         return _func
 
     def _map_output_func(self, output_mapping: Dict, node_name: str):
         # map outputs to the state
-        def _func(outputs):
-            ret = {}
-            # convert the output to a dict
-            if isinstance(outputs, (str, BaseMessage)):
-                # support mapping with a string or BaseMessage to schema field
-                for sname, oname in output_mapping.items():
-                    field = self.schema_fields_map.get(sname, None)
-                    if not field:
-                        raise ValueError(f"Unsupported state name for output mapping: {sname}")
-                    # must be None
-                    if oname is None:
-                        ret[sname] = parse_data_with_type(
-                            outputs,
-                            to_parsed_type(field.field_type)
-                        )
-                    else:
-                        raise ValueError(f"Unsupported output mapping from `{oname}` with a string or BaseMessage")                
-            elif isinstance(outputs, dict):
-                # default mapping
-                if not output_mapping:
-                    # add mapping, in case of type mismatch
-                    for name in outputs:
-                        output_mapping[name] = name
-
-                # support multiple state names mapping with one output
-                new_output_mapping: Dict[str, NamedMappingParserArgs] = {}
-                for sname, oname in output_mapping.items():
-                    field = self.schema_fields_map.get(sname, None)
-                    if not field:
-                        raise ValueError(f"Unsupported state name for output mapping: {sname}")
-                    if isinstance(oname, str):
-                        new_output_mapping[sname] = NamedMappingParserArgs(
-                            name=oname, 
-                            output_type=to_parsed_type(field.field_type),
-                            message_role="ai",
-                            message_name=node_name,
-                        )
-                        # TODO: process the given converter function 
-                        if field.converter:
-                            pass
-                    elif isinstance(oname, NamedMappingParserArgs):                        
-                        new_output_mapping[sname] = oname
-                    else:
-                        raise ValueError(f"Unsupported output mapping: {oname}")
-                
-                ret = parse_data_with_type(
-                    outputs, 
-                    output_type=DataType.struct, 
-                    struct_mapping=new_output_mapping, 
-                    known_data_type=DataType.struct
+        # re-build the output mapping first
+        new_mapping: Dict[str, NamedMappingParserArgs] = {}
+        for sname, oname in output_mapping.items():
+            field = self.schema_fields_map.get(sname, None)
+            if not field:
+                raise ValueError(f"Unsupported state name for output mapping: {sname}")
+            # must be None
+            if is_primitive_field(oname) or isinstance(oname, str):
+                new_mapping[sname] = NamedMappingParserArgs(
+                    name=oname,
+                    output_type=to_parsed_type(field.field_type),
+                    message_role="ai",
+                    message_name=node_name,
                 )
+                # TODO: process the given converter function 
+                if field.converter:
+                    pass
+            elif isinstance(oname, NamedMappingParserArgs):
+                new_mapping[sname] = oname
             else:
-                raise ValueError(f"Unsupported output type: {type(outputs)}")
-            return ret
+                raise ValueError(f"Unsupported output mapping from `{oname}`")
+        def _func(outputs):
+            # convert the output to a dict
+            return self._data_to_state(outputs, new_mapping)
 
         return _func
     

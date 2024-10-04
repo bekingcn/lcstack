@@ -36,14 +36,6 @@ graph_simple:
           # name: llm_chain
         output_mapping:
           response: output
-    # output_parser_args:
-      # type: "struct"
-      # output_mapping:
-      #   response: "response"
-      #   question: "question"
-    # outputs:
-    # - response
-    # - question
 
 graph_simple_from_file:
   initializer: conditional_graph

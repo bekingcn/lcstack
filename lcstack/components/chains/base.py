@@ -137,12 +137,18 @@ def load_llm_requests_chain(llm, prompt):
     chain = LLMRequestsChain(llm_chain=llm_chain)
     return chain
 
-def create_llm_chain(llm: Runnable, prompt: Runnable):
-    return (
-        prompt
-        | llm
-        | StrOutputParser()
-    )
+def create_llm_chain(llm: Runnable, prompt: Runnable, return_str: bool = True):
+    if return_str:
+        return (
+            prompt
+            | llm
+            | StrOutputParser()
+        )
+    else:
+        return (
+            prompt
+            | llm
+        )
 
 def create_sql_query_chain(
     llm: BaseLanguageModel,

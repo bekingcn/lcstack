@@ -2,7 +2,7 @@ import enum
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 
-from lcstack.core.parsers.base import MappingParserArgs, NamedMappingParserArgs, OutputParserType
+from lcstack.core.parsers.base import MappingParserArgs, NamedMappingParserArgs, OutputParserType, rebuild_struct_mapping
 
 class ComponentType(str, enum.Enum):
     Unknown = "Unknown"
@@ -43,6 +43,8 @@ ChainableRunnables = [
             ComponentType.Retriever,
             ComponentType.PromptTemplate,
             ComponentType.DataConverter,
+            ComponentType.Tool,
+            ComponentType.ToolNode
 ]
 
 NonRunnables = [
@@ -60,29 +62,35 @@ class ComponentParameter(BaseModel):
     component_type: Optional[ComponentType] = ComponentType.Unknown
 
 class InitializerDataConfig(BaseModel):
-    output_parser_args: Optional[MappingParserArgs] = None
-    
-    # outputs, if dict, the key is the to key, value is the from key, following struct_mapping in the output parser
-    outputs: Union[str, List[str], Dict[str, str], Dict[str, NamedMappingParserArgs]] = Field(default=[])
+    # output_mapping on config level
+    # key is schema field name, value is input or output name
+    # convertion: any -> any
+    # str, pop from input as node input
+    # dict key:
+    #   - None or _, as above, pop from input as node input
+    # dict value:
+    #   - None, keyed (with dict key) input value
+    #   - NamedMappingParserArgs, convert following args. the name could be None or _ following above rules
+    output_mapping: Union[str, MappingParserArgs, Dict[Optional[str], Optional[Union[str, NamedMappingParserArgs]]]] = Field(default_factory=dict)
+    # support input_mapping on config level
+    # following above rules: any -> any
+    input_mapping: Union[str, Dict[Optional[str], Optional[Union[str, NamedMappingParserArgs]]]] = Field(default_factory=dict, )
 
     # arguments to be passed to func_or_class
     kwargs: Optional[Dict[str, Any]] = {}
 
     def __init__(self, **data):
         super().__init__(**data)
-        for k in ["output_parser_args", "outputs"]:
+        for k in ["input_mapping", "output_mapping"]:
             data.pop(k, None)
 
         self.kwargs.update(data)
         
-        # re-map the outputs from any type to dict
-        if isinstance(self.outputs, str):
-            outputs = {self.outputs: NamedMappingParserArgs(name=self.outputs, output_type=OutputParserType.pass_through)}
-        if isinstance(self.outputs, list):
-            outputs = {key: NamedMappingParserArgs(name=key, output_type=OutputParserType.pass_through) for key in self.outputs}
-        if isinstance(self.outputs, dict):
-            outputs = {key: NamedMappingParserArgs(name=val, output_type=OutputParserType.pass_through) for key, val in self.outputs.items()}
-        self.outputs = outputs
+        # rebuild output_mapping
+        self.output_mapping = rebuild_struct_mapping(self.output_mapping, check_args=True)
+            
+        # rebuild input_mapping, without check_args (MappingParserArgs)
+        self.input_mapping = rebuild_struct_mapping(self.input_mapping, check_args=True)
 
 # TODO: Component config model
 class InitializerConfig(BaseModel):

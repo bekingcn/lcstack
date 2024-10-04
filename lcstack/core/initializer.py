@@ -8,7 +8,7 @@ from lcstack.registry import get_component
 
 from .component import Component
 from .container import CHAT_HISTORY_PARAM_NAME, BaseContainer, NoneRunnableContainer, RunnableContainer
-from .models import ComponentType, InitializerConfig, InitializerDataConfig
+from .models import ComponentType, InitializerConfig, InitializerDataConfig, NonRunnables
 
 class InitializerPath(BaseModel):
     path: List[str]
@@ -191,31 +191,26 @@ class BaseInitializer(BaseModel):
         new_kwargs.update(kwargs)
         
         # prirority: config > Component > default (pass_through)
-        output_parser_args = self.initializer_config.data.output_parser_args or self.component.default_output_parser_args
+        output_mapping = self.initializer_config.data.output_mapping
+        input_mapping = self.initializer_config.data.input_mapping
 
         # inst = self.func_or_class(**kwargs)
-        if self.component.component_type in [ComponentType.Embeddings, 
-                                   ComponentType.VectorStore, 
-                                   ComponentType.DocumentLoader, 
-                                   ComponentType.DocumentTransformer, 
-                                   ComponentType.TextSplitter,
-                                   ComponentType.Unknown]:
+        if self.component.component_type in NonRunnables:
             return NoneRunnableContainer(
                 name,
                 self.component, 
-                new_kwargs,  
-                outputs=self.initializer_config.data.outputs, 
+                new_kwargs,
                 shared=False)
         else:
             return RunnableContainer(
                 name,
                 self.component, 
                 new_kwargs,
-                outputs=self.initializer_config.data.outputs, 
                 shared=False,
                 # must pop this key, cause it's common parameter as needed
                 memory=new_kwargs.pop(CHAT_HISTORY_PARAM_NAME, None),
-                output_parser_args=output_parser_args)
+                input_mapping=input_mapping,
+                output_mapping=output_mapping)
 
 class BaseComponentInitializer(BaseInitializer):
 

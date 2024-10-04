@@ -10,7 +10,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from lcstack.components.chat_history.base import ChatHistoryFactory
 from .models import ChainableRunnables, ComponentType
 from .component import Component
-from .parsers.base import MappingParserArgs, NamedMappingParserArgs, PrimitiveOutputParser, StructOutputParser
+from .parsers.base import MappingParserArgs, NamedMappingParserArgs, PrimitiveOutputParser, StructOutputParser, parse_data_with_struct_mapping
 
 CHAT_HISTORY_PARAM_NAME = "chat_history"
 DEFAULT_CHAT_HISTORY_KEY = CHAT_HISTORY_PARAM_NAME
@@ -20,8 +20,7 @@ class BaseContainer:
     def __init__(self, 
                  name: str,
                  component: Component,
-                 init_kwargs: dict, 
-                 outputs: dict[str, NamedMappingParserArgs], 
+                 init_kwargs: dict,
                  shared=False):
         self.name = name
         self.component: Component = copy.copy(component)      # shallow copy is enough?
@@ -29,8 +28,6 @@ class BaseContainer:
         self._kwargs = init_kwargs
         self.params = component.params
         self.component_name = component.name
-        self.inputs = self.component.inputs
-        self.outputs = outputs
         
         # if this runnable is shared and build only once
         self.shared = shared
@@ -91,18 +88,21 @@ class RunnableContainer(BaseContainer):
     def __init__(self, 
                  name: str,
                  component, 
-                 init_kwargs: dict, 
-                 outputs: dict[str, NamedMappingParserArgs], 
+                 init_kwargs: dict,
                  shared=False,
                  memory: Optional[ChatHistoryFactory]=None, 
-                 output_parser_args: Optional[MappingParserArgs]=None):
-        super().__init__(name, component, init_kwargs, outputs, shared=shared,)
+                 input_mapping: Dict[Optional[str], NamedMappingParserArgs]=None,
+                 output_mapping: Dict[Optional[str], NamedMappingParserArgs]=None):
+        super().__init__(name, component, init_kwargs, shared=shared,)
         
         if memory and not isinstance(self.memory, ChatHistoryFactory):
             raise ValueError("The chat history must be an instance of ChatHistoryFactory.")
         self.memory = memory
-        self.output_parser_args = output_parser_args
-        self.output_parser_type = output_parser_args.output_type
+        self.inputs: Dict[Optional[str], NamedMappingParserArgs] = self.component.inputs
+        self.default_output_parser_args = self.component.default_output_parser_args
+        
+        self.output_mapping = output_mapping
+        self.input_mapping = input_mapping
     
     def _get_template_inputs(self) -> Dict[str, str]:
         # trying get the inputs from prompt templates        
@@ -123,17 +123,18 @@ class RunnableContainer(BaseContainer):
         history_messages_key = DEFAULT_CHAT_HISTORY_KEY
         
         # find the first input or output as the keys
-        if len(self.inputs) > 0:
-            input_messages_key = list(self.inputs.keys())[0]
-        else:
-            pt_inputs = self._get_template_inputs()
-            if len(pt_inputs) > 0:
-                input_messages_key = list(pt_inputs.keys())[0]
-
-        if self.output_parser_args.output_type == OutputParserType.struct and len(self.output_parser_args.struct_mapping) > 0:
-            output_messages_key = list(self.output_parser_args.struct_mapping.keys())[0]
-        elif len(self.outputs) > 0:
-            output_messages_key = list(self.outputs.keys())[0]
+        # TODO: specify the input/output message keys
+        # if len(self.inputs) > 0:
+        #     input_messages_key = list(self.inputs.keys())[0]
+        # else:
+        #     pt_inputs = self._get_template_inputs()
+        #     if len(pt_inputs) > 0:
+        #         input_messages_key = list(pt_inputs.keys())[0]
+# 
+        # if self.output_parser_args.output_type == OutputParserType.struct and len(self.output_parser_args.struct_mapping) > 0:
+        #     output_messages_key = list(self.output_parser_args.struct_mapping.keys())[0]
+        # elif len(self.outputs) > 0:
+        #     output_messages_key = list(self.outputs.keys())[0]
         
         def wrap_func(runnable):
             return RunnableWithMessageHistory(
@@ -145,40 +146,68 @@ class RunnableContainer(BaseContainer):
 
         return wrap_func
 
+    def _original_input_parser(self, input):
+        if self.input_mapping:
+            input = parse_data_with_struct_mapping(
+                data=input, 
+                struct_mapping=self.input_mapping
+            )
+        if not all([k == v.name and v.output_type == OutputParserType.pass_through for k, v in self.inputs.items()]):
+            input_parser = StructOutputParser(struct_mapping=self.inputs, message_key=None, messages_key=None, strict=True)
+            input = input_parser.parse(input)
+        return input
+        
     def _original_output_parser(self, output, node_name: Optional[str] = None):
-        if not self.output_parser_args:
-            return output
-        output_parser_args = self.output_parser_args.model_dump()
-        output_parser_type = output_parser_args.pop("output_type")
-        if not self.output_parser_args.message_name:
-            output_parser_args["message_name"] = node_name
-        return parse_data_with_type(
-            data=output, 
-            output_type=output_parser_type,
-            **output_parser_args
-        )
+        if self.default_output_parser_args.output_type != OutputParserType.pass_through:
+            args = self.default_output_parser_args.model_dump()
+            output_parser_type = args.pop("output_type")
+            if not self.default_output_parser_args.message_name:
+                args["message_name"] = node_name
+            output = parse_data_with_type(
+                data=output, 
+                output_type=output_parser_type,
+                **args
+            )
+        if self.output_mapping:
+            output = parse_data_with_struct_mapping(
+                data=output, 
+                struct_mapping=self.output_mapping
+            )
+        return output
 
     def _add_wrappers(self, runnable: Runnable, node_name: Optional[str]):
         """for now, we add external wrapper (chat history), output parser and tool wrapper"""
+        _runnable = runnable
         if isinstance(self.memory, ChatHistoryFactory):
-            runnable = self._wrap_memory(self.memory)(runnable)
-
+            _runnable = self._wrap_memory(self.memory)(_runnable)
         # TODO: make sure which runnable types should be chained with output parser?
         if self.component.component_type in ChainableRunnables:
-            # assuming all inputs's values `NamedMappingParserArgs`
-            pass_through = all([k == v.name and v.output_type == OutputParserType.pass_through for k, v in self.inputs.items()])
-            if not pass_through:
-                input_parser = StructOutputParser(struct_mapping=self.inputs)
-                runnable = input_parser.parse | runnable
-                # otherwise, the inputs are passed through
-            
-            if self.output_parser_type != OutputParserType.pass_through:
-                import functools
-                runnable = (
-                    runnable 
-                    | functools.partial(self._original_output_parser, node_name=node_name)
+            import functools
+            wrap_input = not all([k == v.name and v.output_type == OutputParserType.pass_through for k, v in self.inputs.items()]) or self.input_mapping
+            wrap_output = self.default_output_parser_args.output_type != OutputParserType.pass_through or self.output_mapping
+            if wrap_input and wrap_output:
+                _runnable = (
+                    self._original_input_parser
+                    | _runnable
+                    | self._original_output_parser
+                    # TODO: node name is not used, is necessary to pass it here?
+                    # | functools.partial(self._original_output_parser, node_name=node_name)
                 )
-            if NAME_TOOL_SCHEMA in self._kwargs and not isinstance(runnable, BaseTool):
+            elif wrap_input:
+                _runnable = (
+                    self._original_input_parser
+                    | _runnable
+                )
+            elif wrap_output:
+                _runnable = (
+                    _runnable
+                    | self._original_output_parser
+                    # TODO: node name is not used, is necessary to pass it here?
+                    # | functools.partial(self._original_output_parser, node_name=node_name)
+                )
+            
+            if NAME_TOOL_SCHEMA in self._kwargs and not isinstance(_runnable, BaseTool):
+                # TODO: better way to config and get the tool schema
                 # convert the runnable to a langchain tool
                 from langchain_core.tools import convert_runnable_to_tool
                 tool_schema = self._kwargs.get(NAME_TOOL_SCHEMA) or self.component.tool_schema or {}
@@ -187,9 +216,11 @@ class RunnableContainer(BaseContainer):
                 tool_name = tool_schema.get("name")
                 tool_desc = tool_schema.get("description")
                 tool_arg_types = tool_schema.get("arg_types")
-                runnable = convert_runnable_to_tool(runnable=runnable, name=tool_name, description=tool_desc, arg_types=tool_arg_types)
+                _runnable = convert_runnable_to_tool(runnable=runnable, name=tool_name, description=tool_desc, arg_types=tool_arg_types)
                 print(f"Runnable `{self.component_name}` was converted to a tool:\n", runnable)
-        return runnable
+            if _runnable is not runnable:
+                _runnable = _runnable.with_config({"name": "wrapped_runnable", "description": "wrapped runnable"})
+        return _runnable
 
     def build_original(self, node_name: Optional[str] = None, as_tool: bool = False) -> Any:
         # avoid casscading as_tool and node_name
@@ -197,6 +228,7 @@ class RunnableContainer(BaseContainer):
         runnable = self._add_wrappers(runnable, node_name)
         return runnable
 
+    # TODO: to clarify build() and build_original(), what are their cases?
     def build(self):
         runnable = self.build_original()
         if not isinstance(runnable, Runnable):
@@ -204,53 +236,10 @@ class RunnableContainer(BaseContainer):
         # to avoid confusion, do not covert input/output here any more
         # ecah component should take care of its own input/output        
         return runnable
-        # return (
-        #     self._default_enter_func
-        #     | runnable
-        #     | self._default_exit_func
-        # )
     
     def invoke(self, inputs: Any, config: Optional[RunnableConfig] = None):
         runnable = self.build()
         return runnable.invoke(inputs, config)
-    
-    # TODO: remove, or add before _build_original for checking inputs
-    # add this to build_original? hard to do now
-    # it's dependent on the chians/agents, and invariables of prompt templates
-    def _default_enter_func(self, input_value):
-        # NOTE: supported input types: str, dict[str, Any]
-        input_keys = list(self.inputs.keys())
-        if isinstance(input_value, dict):
-            missing_keys = set(input_keys).difference(input_value)
-            if len(missing_keys) > 1:   # chat history 
-                raise KeyError(f"Missing keys {missing_keys} in input.")
-        elif isinstance(input_value, str):
-            if len(input_keys) == 1:
-                input_value = {input_keys[0]: input_value}
-            elif len(input_keys) > 1:
-                raise ValueError("Only one input is supported for non-dict inputs.")
-        else:
-            raise ValueError(f"Unsupported input type: {type(input_value)}")
-
-        return input_value
-    
-    # TODO: remove, to unify with _original_output_parser
-    def _default_exit_func(self, output_value):
-        # Try to convert the output to a string if no output_keys or single output
-        from langchain_core.messages import BaseMessage
-        output_keys = list(self.outputs.keys())
-        if isinstance(output_value, BaseMessage):
-            return output_value.content
-        elif isinstance(output_value, dict):
-            if len(output_keys) == 0:
-                return output_value
-                # return output_value.get(output_keys[0])
-            else:
-                missing_keys = set(output_keys).difference(output_value)
-                if len(missing_keys) > 0:
-                    raise KeyError(f"Missing keys {missing_keys} in output.")
-                return {key: value for key, value in output_value.items() if key in output_keys}
-        return output_value
 
 class WorkflowContainer(RunnableContainer):
     pass

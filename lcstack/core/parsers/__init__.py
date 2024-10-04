@@ -6,7 +6,9 @@ from .base import (
     DataType,
     MappingParserArgs,
     NamedMappingParserArgs,
-    MessagesSlicingMethod
+    MessagesSlicingMethod,
+    parse_data_with_struct_mapping,
+    rebuild_struct_mapping
 )
 
 __all__ = [
@@ -17,5 +19,7 @@ __all__ = [
     "OutputParserType",
     "MappingParserArgs",
     "NamedMappingParserArgs",
-    "MessagesSlicingMethod"
+    "MessagesSlicingMethod",
+    "parse_data_with_struct_mapping",
+    "rebuild_struct_mapping"
 ]

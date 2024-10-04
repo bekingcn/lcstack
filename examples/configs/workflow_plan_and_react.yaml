@@ -1,0 +1,115 @@
+# reference from settings (settings.yaml)
+tavily_search: !SET ${templates.tools.tavily_search}
+
+tool_node:
+  initializer: tool_node
+  data:
+    tools:
+      - '{{ tavily_search }}'
+
+llm_with_tools:
+  initializer: llm
+  data:
+    provider: ollama
+    tag: chat
+    tools: '{{ tool_node }}'
+    model: llama3.2 # qwen2.5
+    temperature: 0.3
+
+llm_planer:
+  initializer: llm
+  data:
+    provider: ollama
+    tag: chat
+    model: llama3.2 # qwen2.5
+    temperature: 0.3
+
+planer_prompt:
+  initializer: prompt
+  data:
+    template:
+    - 
+      - system
+      - | 
+        For the given objective, come up with a simple step by step plan. 
+        This plan should involve individual tasks, that if executed correctly will yield the correct answer. Do not add any superfluous steps. 
+        The result of the final step should be the final answer. Make sure that each step has all the information needed - do not skip steps.
+    -
+      - placeholder
+      - "{messages}"
+
+react_prompt:
+  initializer: prompt
+  data:
+    template:
+    - 
+      - placeholder
+      - "{messages}"
+    - 
+      - human
+      - |
+        Original objective: {question}
+        
+        You are tasked with these steps one at a time.
+
+planer:
+  initializer: llm_chain_lcel
+  data:
+    llm: '{{ llm_planer }}'
+    prompt: '{{ planer_prompt }}'
+    return_str: false
+
+react:
+  initializer: llm_chain_lcel
+  data:
+    llm: '{{ llm_with_tools }}'
+    prompt: '{{ react_prompt }}'
+    return_str: false    # return message
+
+workflow_react:
+  initializer: conditional_graph
+  data:
+    inline:
+      name: ReactWorkflow
+      input_mapping:
+        messages: query
+      schema:
+      - name: messages  # schema field name
+        field_type: messages
+        default: []
+        operator: add
+        required: true
+      - name: is_last_step  # schema field name
+        field_type: bool
+        default: false
+      - name: output  # llm output from ai message
+        field_type: str
+        required: false
+      vertices:
+      - name: planer_node
+        agent: '{{ planer }}'
+        next: llm_node
+        output_mapping:
+          messages: output  # map planer output to `messages`
+      - name: llm_node
+        agent: '{{ react }}'
+        next: branch_0
+        # input_mapping: messages  # pop `messages` from schema
+        output_mapping:
+          messages: output  # map llm output to `messages`
+          output: output    # map llm output to `output`
+      - name: branch_0
+        default: __end__
+        branchs:
+        - conditions:
+          # a trick to check if it's the end of workflow, tool calling wihout output
+          - property: output
+            value: ''
+          next: tools_node
+      - name: tools_node
+        agent: '{{ tool_node }}'
+        next: llm_node
+        output_mapping:   
+          messages: messages  # tool message
+
+# python cli.py -c workflow_react.yaml -i workflow_react -q "Trump's recent news?" -I query -O output

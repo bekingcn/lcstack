@@ -36,10 +36,5 @@ workflow_simple:
           # name: llm_chain
         output_mapping:
           response: output
-    # output_parser_args:
-      # type: "struct"
-      # output_mapping:
-      #   response: "response"
-      #   question: "question"
 
 # python cli.py -c workflow_simple_as_agent.yaml -i graph_simple -q "what's you name?" -I question

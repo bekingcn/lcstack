@@ -44,11 +44,13 @@ class Component(BaseModel):
             for k, v in inputs.items():
                 if isinstance(v, str):
                     inputs[k] = NamedMappingParserArgs(name=v, output_type=OutputParserType.pass_through)
+        # TODO: convert to default_input_parser
 
 class LcComponent(Component):
     """
     Represents a langchain component in the stack.
     """
+    inputs: Union[str, list[str],dict[str, Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
 # support only runnable interface's components, chain/compiled graph/llm/chatmodel/prompt/retriver ...
 class RunnableComponent(LcComponent):
     pass
