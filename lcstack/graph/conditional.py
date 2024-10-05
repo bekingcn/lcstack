@@ -6,6 +6,8 @@ from pydantic import BaseModel, Field
 
 from .base import NAME_BRANCH_STEPS, CallableVertex
 from .base import Workflow, BaseVertex, BaseWorkflowModel
+from ..core.parsers.mako import eval_expr
+from ..configs import get_expr_enabled
 
 NAME_GRAPH_DEFAULT_BRANCH = "default"
 NAME_ENTER_NODE = "_enter_"
@@ -22,12 +24,20 @@ class ExprMapping:
         return self.state[name]
 
 class ConditionalBranch(BaseModel):
-    conditions: List[Dict[str, Any]] = Field(default_factory=list)
+    conditions: Union[str, List[Dict[str, Any]]] = Field(default_factory=list)
     next: str = Field(default_factory=str)
-    setters: Optional[List[Dict[str, Any]]] = []
+    setters: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
 
     def match_conditions(self, state) -> bool:
-        return any([c["property"] in state and state[c["property"]] == c["value"] for c in self.conditions])
+        if isinstance(self.conditions, str):
+            # NOTE: use mako template here
+            if get_expr_enabled():                
+                eval_result = eval_expr(self.conditions, state)
+                if eval_result is None:
+                    raise ValueError(f"failed to evaluate expression or not a valid expression: {self.conditions}")
+                return eval_result
+        else:
+            return any([c["property"] in state and state[c["property"]] == c["value"] for c in self.conditions])
     
     
     # TODO: finish this better
@@ -40,14 +50,9 @@ class ConditionalBranch(BaseModel):
                 ret = state[ref]
             else:
                 ret = None
-        # TODO: experimental try to eval expression, to be checked
-        #   to make a new EvalCondition to support this if needed
-        elif PREFIXT_STATE_EVAL_KEY in expr:
-            try:
-                ret = eval(expr, {}, {PREFIXT_STATE_EVAL_KEY: ExprMapping(state)})
-            except Exception as e:
-                print(f"Failed to eval: {expr}\n", e)
-                pass
+        elif get_expr_enabled():
+            # NOTE: use mako template here
+            return eval_expr(expr, state)
         return ret
 
 # TODO: support jinja template for conditions check and result setter
@@ -97,8 +102,9 @@ class ConditionalWorkflow(Workflow):
         def _func(state):
             state = state
             # check if it's from a setter node
-            if NAME_BRANCH_STEPS in state and len(state[NAME_BRANCH_STEPS])>0 and state[NAME_BRANCH_STEPS][-1][0] == this_name:
-                return state[NAME_BRANCH_STEPS][-1][1]
+            branch_steps = state.get(NAME_BRANCH_STEPS, None)
+            if branch_steps and len(branch_steps)>0 and branch_steps[-1][0] == this_name:
+                return branch_steps[-1][1]
             # from a non-setter node
             return branch_vertex.match(state)
         path_map = {}
@@ -186,7 +192,8 @@ class ConditionalWorkflow(Workflow):
                 branchs = v.branchs
                 node_name = self._to_graph_node_name(v.name)
                 from_node_names = _edges[node_name]
-                if self._need_setters(branchs):                    
+                if self._need_setters(branchs) or v.default_setters:
+                    print("need setters: ", v.name)
                     for from_node_name in from_node_names:
                         self._add_setters_and_conditional_edges(graph, from_node_name, node_name, v)
                 else:                    

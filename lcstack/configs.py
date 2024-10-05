@@ -16,3 +16,17 @@ def get_config_root():
         return Path(os.environ["LCSTACK_CONFIG_ROOT"])
     # not config root, use cwd
     return Path.cwd()
+
+_expr_enabled = None
+def get_expr_enabled():
+    if _expr_enabled is not None:
+        return _expr_enabled
+    if "LCSTACK_EXPR_ENABLED" in os.environ:
+        return os.environ.get("LCSTACK_EXPR_ENABLED", "false").lower() == "true"
+    return False
+
+def set_expr_enabled(expr_enabled: bool):
+    global _expr_enabled
+    _expr_enabled = expr_enabled
+    if expr_enabled:
+        print("WARNING: LCSTACK_EXPR_ENABLED is set to true. Use at your own risk because it is not secure for external use.")

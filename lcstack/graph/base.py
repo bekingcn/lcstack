@@ -16,6 +16,8 @@ from lcstack.registry import get_component
 
 from ..core.parsers import DataType, parse_data_with_type, default_value_with_type, rebuild_struct_mapping
 from ..core.container import RunnableContainer
+from ..core.parsers.mako import eval_expr, get_mako_expression
+from ..configs import get_expr_enabled
 
 NAME_BRANCH_STEPS = "branch__steps__"
 
@@ -95,6 +97,9 @@ class CallableVertex(BaseVertex):
     #   - str, output field name, align to state field type
     #   - NamedMappingParserArgs, convert following args
     output_mapping: Dict[str, Optional[Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
+    
+    input_expr: Optional[str] = None
+    output_expr: Optional[str] = None
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -104,6 +109,18 @@ class CallableVertex(BaseVertex):
             if not config or not name.strip():
                 raise ValueError(f"Invalid agent config `{self.agent}`, should be `config_file:agent_name`")
             self.agent = AgentConfig(config=config.strip(), name=name.strip())
+        
+        if get_expr_enabled():
+            if self.input_mapping and self.input_expr:
+                    raise ValueError("Cannot specify both `input_mapping` and `input_expr`")
+            if self.output_mapping and self.output_expr:
+                raise ValueError("Cannot specify both `output_mapping` and `output_expr`")
+        else:
+            if self.input_expr or self.output_expr:
+                # or, just ignore it
+                self.input_expr = None
+                self.output_expr = None
+                # raise ValueError("Cannot specify `input_expr` or `output_expr` when expression is not enabled")
         
         input_mapping = {}
         if isinstance(self.input_mapping, str):
@@ -128,6 +145,19 @@ class BaseWorkflowModel(BaseModel):
     # same as CallableVertex.output_mapping
     input_mapping: Dict[str, Optional[Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
     reset_state: bool = Field(default=False)
+    
+    input_expr: Optional[str] = None
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        if get_expr_enabled():
+            if self.input_expr and self.input_mapping:
+                raise ValueError("Cannot specify both `input_expr` and `input_mapping`")
+        else:
+            if self.input_expr:
+                # or, just ignore it
+                self.input_expr = None
+                # raise ValueError("Cannot specify `input_expr` when expression is not enabled")
 
 ## helper functions
 
@@ -142,6 +172,7 @@ def _default_value_with_type(_type: SupportedDataType) -> Any:
         return False
     else:
         return default_value_with_type(_type)
+
 def to_parsed_type(data_type: SupportedDataType) -> DataType:    
     _type = (
         DataType.primitive
@@ -150,6 +181,8 @@ def to_parsed_type(data_type: SupportedDataType) -> DataType:
         else DataType.list if data_type == SupportedDataType.list
         else DataType.message if data_type == SupportedDataType.message
         else DataType.messages if data_type == SupportedDataType.messages
+        # for now, align with list
+        else DataType.list if data_type == SupportedDataType.structlist
         else DataType.pass_through
     )
     return _type
@@ -187,6 +220,7 @@ class Workflow:
         self.name: str = model.name or self.__class__.__name__
         self.vertices: List[BaseVertex] = model.vertices
         self.input_mapping = model.input_mapping or {}
+        self.input_expr = model.input_expr
         self.schema = model.schema_ or []
         self.reset_state = model.reset_state
         
@@ -214,7 +248,7 @@ class Workflow:
             with edges definations like: node1.output.field1 -> node2.input.field2"""
         fields = self.schema.copy()
         # add a extra `branch_steps` field with special field type
-        fields.append(FieldConfig(**{"name": NAME_BRANCH_STEPS, "field_type": SupportedDataType.structlist, "operator": SupportedOperators.Add}))
+        fields.append(FieldConfig(**{"name": NAME_BRANCH_STEPS, "field_type": SupportedDataType.structlist, "operator": SupportedOperators.Add, "default": []}))
         
         # camel case the name
         model_name = f"{self.name}State"
@@ -222,6 +256,7 @@ class Workflow:
         DynamicStateModel = typed_dict_create_model(model_name, fields=fields)
         # assign the default values and state fields
         self._default_dict = {f.name: f.default or _default_value_with_type(f.field_type) for f in self.schema}
+        self._default_dict[NAME_BRANCH_STEPS] = []
         
         return DynamicStateModel
     
@@ -283,20 +318,29 @@ class Workflow:
             warning(f"reset state in workflow `{self.name}` for thread `{thread_id}`")
             self.checkpoint.storage.clear()
         
-        # convert mapping to dict[str, str]
-        input_mapping = {sn: inn.name if isinstance(inn, NamedMappingParserArgs) else inn for sn, inn in self.input_mapping.items()}
+        required_keys = {input_mapping[f.name] for f in self.schema if f.required}
         
+        # try expression first
+        if self.input_expr:
+            eval_result = eval_expr(self.input_expr, inputs)
+            if isinstance(eval_result, dict):
+                missing_keys = required_keys.difference(eval_result.keys())
+                if len(missing_keys) > 0:
+                    raise ValueError(f"required fields {missing_keys} are missing in workflow {self.name}'s inputs mapping")
+                # add the default values
+                return {**self._default_dict, **eval_result}
+            else:
+                raise ValueError(f"Invalid expression result for workflow inputs: {eval_result}")
+        
+        # convert mapping to dict[str, str]
+        input_mapping = {sn: inn.name if isinstance(inn, NamedMappingParserArgs) else inn for sn, inn in self.input_mapping.items()}        
         # all required fields should be in the inputs
         try:
-            required_keys = {input_mapping[f.name] for f in self.schema if f.required}
             missing_keys = required_keys.difference(input_mapping.values())
             if len(missing_keys) > 0:
                 raise ValueError(f"required fields {missing_keys} are missing in workflow {self.name}'s inputs mapping")
         except KeyError:
             raise ValueError(f"input mapping should include all required fields")
-        
-        # TODO: should force to align the input names with the schema if not matching? 
-        #   removed the previous implementation, to find from history code if needed
         
         # re-build the output mapping first
         new_mapping: Dict[str, NamedMappingParserArgs] = {}
@@ -325,8 +369,13 @@ class Workflow:
         ret = {**self._default_dict, **ret}
         return ret
 
-    def _enter_node_func(self, node_name: str, input_mapping: Dict[Optional[str], NamedMappingParserArgs]):
-        def _func(state):
+    def _enter_node_func(self, node_name: str, input_mapping: Dict[Optional[str], NamedMappingParserArgs], input_expr: Optional[str]):
+        def enter_node(state):
+            # try expression first
+            if input_expr:
+                eval_result = eval_expr(input_expr, state)
+                return eval_result
+
             # save a copy of the state
             state_snapshot = deepcopy(state)
             self.intermediate_steps.append((node_name, state_snapshot, ))
@@ -334,9 +383,9 @@ class Workflow:
             # pop the value when it is None
             return parse_data_with_struct_mapping(state, input_mapping)
 
-        return _func
+        return enter_node
 
-    def _map_output_func(self, output_mapping: Dict, node_name: str):
+    def _map_output_func(self, output_mapping: Dict, output_expr: Optional[str], node_name: str):
         # map outputs to the state
         # re-build the output mapping first
         new_mapping: Dict[str, NamedMappingParserArgs] = {}
@@ -360,11 +409,18 @@ class Workflow:
                 new_mapping[sname] = oname
             else:
                 raise ValueError(f"Unsupported output mapping from `{oname}`")
-        def _func(outputs):
+        def exit_node(outputs):
+            # try expression first
+            if output_expr:
+                eval_result = eval_expr(output_expr, outputs)
+                if isinstance(eval_result, dict):
+                    return eval_result
+                else:
+                    raise ValueError(f"Invalid expression result for vertex outputs: {eval_result}")
             # convert the output to a dict
             return self._data_to_state(outputs, new_mapping)
 
-        return _func
+        return exit_node
     
     def _to_graph_node_name(self, name):
         if name in [START, END]:
@@ -375,7 +431,7 @@ class Workflow:
         node_name = self._to_graph_node_name(v.name)
         if isinstance(v.agent, Callable):
             callable = v.agent
-        # elif isinstance(v.agent, AgentConfig):
+        # elif isinstance(v.agent, AgentConfig):    # not reachable
         #     callable = AgentInvoker(node_name=node_name, agent_config=v.agent).runnable
         elif isinstance(v.agent, RunnableContainer):
             callable = v.agent.build_original()
@@ -383,9 +439,9 @@ class Workflow:
             raise ValueError(f"Unsupported agent type `{type(v.agent)}` in callable vertex `{v.name}`")
         output_mapping = v.output_mapping or {}
         runnable = (
-            RunnableLambda(self._enter_node_func(node_name, input_mapping=v.input_mapping), name=node_name)
+            RunnableLambda(self._enter_node_func(node_name, input_mapping=v.input_mapping, input_expr=v.input_expr), name=node_name)
             | callable
-            | self._map_output_func(output_mapping, node_name=node_name)
+            | self._map_output_func(output_mapping, v.output_expr, node_name=node_name)
         )
         return node_name, runnable
     
