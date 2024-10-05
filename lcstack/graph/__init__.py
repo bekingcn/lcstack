@@ -34,7 +34,7 @@ def create_workflow_agent(workflow_type: WorkflowType=WorkflowType.Conditional, 
         workflow = ConditionalWorkflow(wf_config)
     else:
         raise ValueError(f"Unsupported workflow type: {workflow_type}")
-    return workflow._enter_graph | workflow.compile()
+    return workflow.build_workflow()
 
 __all__ = [
     "WorkflowType", 

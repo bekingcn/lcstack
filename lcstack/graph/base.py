@@ -77,7 +77,7 @@ class BaseVertex(BaseModel):
     next: Optional[str] = None
 
 class CallableVertex(BaseVertex):
-    # TODO: Any is not good, any better to represent RunnableContainer?
+    # TODO: Any is not good, any better to represent RunnableContainer which is not BaseModel?
     agent: Union[str, AgentConfig, Callable, Any]    # Any: RunnableContainer
     """agent config file path, `[config].yaml:[agent name]`, config file path and name, or parsed agent"""
     # key is schema field name, value is input or output name
@@ -88,7 +88,7 @@ class CallableVertex(BaseVertex):
     # dict value:
     #   - str, input field name, align to state field type
     #   - NamedMappingParserArgs, convert following args
-    input_mapping: Union[str, Dict[Optional[str], Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
+    input_mapping: Union[str, NamedMappingParserArgs, Dict[Optional[str], Union[str, NamedMappingParserArgs]]] = Field(default_factory=dict)
     # convertion: any -> struct
     # dict value:
     #   - None or _, keyed (dict key) value with input, {[dict key]: ...}
@@ -106,11 +106,16 @@ class CallableVertex(BaseVertex):
             self.agent = AgentConfig(config=config.strip(), name=name.strip())
         
         input_mapping = {}
-        for k, v in self.input_mapping.items():
-            if k == "_":
-                input_mapping[None] = v
-            else:
-                input_mapping[k] = v
+        if isinstance(self.input_mapping, str):
+            input_mapping = self.input_mapping
+        elif isinstance(self.input_mapping, NamedMappingParserArgs):
+            input_mapping = {None: self.input_mapping}
+        else:
+            for k, v in self.input_mapping.items():
+                if is_primitive_field(k):
+                    input_mapping[None] = v
+                else:
+                    input_mapping[k] = v
         self.input_mapping = rebuild_struct_mapping(input_mapping)
 
 class BaseWorkflowModel(BaseModel):
@@ -175,7 +180,7 @@ def is_primitive_field(name: Optional[str]) -> bool:
         return True
     if isinstance(name, str):
         return name == "_"
-    raise ValueError(f"Invalid name type `{name}`")
+    return False
 
 class Workflow:
     def __init__(self, model: BaseWorkflowModel):
@@ -225,8 +230,7 @@ class Workflow:
         """
         Build the graph from the vertices, edges, and input/output mappings
         """
-    
-    # TODO: `build` or `compile`?
+    # build graph -> compile -> build workflow
     def compile(self):
         self.build_graph()
         
@@ -238,42 +242,23 @@ class Workflow:
         return workflow
     
     def _data_to_state(self, data, mapping: Dict[str, Optional[Union[str, NamedMappingParserArgs]]]) -> Dict[str, Any]:
-        
-        ret = {}
-        if (isinstance(data, (str, BaseMessage, list)) 
-            and len(mapping) > 0
-            and all(f.name is None for f in mapping.values())
-        ):
-            # support mapping with a string or BaseMessage to schema field
-            for sname, oname in mapping.items():
-                # must be None or `_`
-                args = oname.model_dump()
-                args.pop("name", None)
-                ret[sname] = parse_data_with_type(
-                    data,
-                    **args
-                )
-        elif isinstance(data, dict):
-            print("==>", data)
-            ret = parse_data_with_type(
-                data, 
-                output_type=DataType.struct, 
-                struct_mapping=mapping, 
-                known_data_type=DataType.struct
-            )
-        # add the missing fields and convert to state type
-        for sname, oname in data.items():
-            if sname not in mapping and sname in self.schema_fields_map:
-                field = self.schema_fields_map[sname]
-                # TODO: to be checked for any side effects. 
-                # or simply: ret[sname] = data[sname]
-                ret[sname] = parse_data_with_type(
-                    data[sname],
-                    # align the type with default parser args
-                    output_type=to_parsed_type(field.field_type),
-                )
-        else:
-            raise ValueError(f"Unsupported output type: {type(data)} \nwith mapping: {mapping}")
+        # TODO: remove the `NAME_BRANCH_STEPS` ... in some tests cases
+        # if isinstance(data, dict):
+        #     for k in [NAME_BRANCH_STEPS, ]:
+        #         data.pop(NAME_BRANCH_STEPS, None)
+        ret = parse_data_with_struct_mapping(data, mapping)
+        if isinstance(data, dict):
+            # add the missing fields and convert to state type
+            for sname, oname in data.items():
+                if sname not in mapping and sname in self.schema_fields_map:
+                    field = self.schema_fields_map[sname]
+                    # TODO: to be checked for any side effects. 
+                    # or simply: ret[sname] = data[sname]
+                    ret[sname] = parse_data_with_type(
+                        data[sname],
+                        # align the type with default parser args
+                        output_type=to_parsed_type(field.field_type),
+                    )
         return ret
     
     def _enter_graph(self, inputs, config=None):
@@ -320,7 +305,7 @@ class Workflow:
             if not field:
                 raise ValueError(f"Unsupported state name for output mapping: {sname}")
             # must be None
-            if is_primitive_field(oname) or isinstance(oname, str):
+            if isinstance(oname, str) or is_primitive_field(oname):
                 new_mapping[sname] = NamedMappingParserArgs(
                     name=None if is_primitive_field(oname) else oname,
                     output_type=to_parsed_type(field.field_type),
@@ -338,8 +323,7 @@ class Workflow:
         ret = self._data_to_state(inputs, new_mapping)
         # add the default values
         ret = {**self._default_dict, **ret}
-
-        return ret # {**inputs, **outputs}
+        return ret
 
     def _enter_node_func(self, node_name: str, input_mapping: Dict[Optional[str], NamedMappingParserArgs]):
         def _func(state):
@@ -361,9 +345,9 @@ class Workflow:
             if not field:
                 raise ValueError(f"Unsupported state name for output mapping: {sname}")
             # must be None
-            if is_primitive_field(oname) or isinstance(oname, str):
+            if isinstance(oname, str) or is_primitive_field(oname):
                 new_mapping[sname] = NamedMappingParserArgs(
-                    name=oname,
+                    name=None if is_primitive_field(oname) else oname,
                     output_type=to_parsed_type(field.field_type),
                     message_role="ai",
                     message_name=node_name,
@@ -372,6 +356,7 @@ class Workflow:
                 if field.converter:
                     pass
             elif isinstance(oname, NamedMappingParserArgs):
+                oname.name = None if is_primitive_field(oname.name) else oname.name
                 new_mapping[sname] = oname
             else:
                 raise ValueError(f"Unsupported output mapping from `{oname}`")
@@ -403,6 +388,9 @@ class Workflow:
             | self._map_output_func(output_mapping, node_name=node_name)
         )
         return node_name, runnable
+    
+    def build_workflow(self):
+        return self._enter_graph | self.compile()
     
     # invoke and stream , which are called directly by the user
 

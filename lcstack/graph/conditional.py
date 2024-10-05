@@ -149,38 +149,6 @@ class ConditionalWorkflow(Workflow):
                 return True
         return False
 
-    # TODO: remove this function, build_graph could do it without `next` specified
-    def _build_sequence_graph(self):
-        """Single-out nodes, and sequence pipeline from top to bottom"""
-        state_model = self.build_state_model() # .state_model
-        graph = StateGraph(state_model)
-
-        graph.add_node(NAME_ENTER_NODE, self._enter_graph)
-        graph.set_entry_point(NAME_ENTER_NODE)
-        last_name = NAME_ENTER_NODE
-        for v in self.vertices:
-            if isinstance(v, BranchsVertex):
-                branchs = v.branchs
-                node_name = self._to_graph_node_name(v.name)
-                if self._need_setters(branchs):
-                    self._add_setters_and_conditional_edges(graph, last_name, node_name, v)
-                else:
-                    self._add_conditional_edges(graph, last_name, None, v)
-                last_name = None
-            elif isinstance(v, CallableVertex):
-                node_name, runnable = self._build_callable_node(v)
-                graph.add_node(node_name, runnable)
-                if last_name is not None:
-                    graph.add_edge(last_name, node_name)
-                last_name = node_name
-            else:
-                raise ValueError(f"Unsupported vertex type: {type(v)}")
-
-        if last_name is not None:
-            graph.add_edge(last_name, END)
-
-        self.graph = graph
-    
     def build_graph(self):
         """NOTE: This graph building supports only single-out graph"""
 
@@ -238,3 +206,4 @@ class ConditionalWorkflow(Workflow):
                 graph.add_edge(s, t)
 
         self.graph = graph
+        print("build graph: ", self._model)
