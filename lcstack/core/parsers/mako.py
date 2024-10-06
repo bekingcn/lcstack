@@ -6,14 +6,14 @@ from typing import Any
 
 
 def is_mako_expression(text: str) -> bool:
-    return text.startswith("%%")
+    return get_mako_expression(text) is not None
 
 def get_mako_expression(text: str) -> str:
     parsed = text
     # strip prefix characters like: \n, space, etc
     parsed = parsed.strip("\n\t ")
     # strip %%
-    if not is_mako_expression(parsed):
+    if not parsed.startswith("%%"):
         return None
     parsed = parsed[2:]
     return parsed.strip()
@@ -33,6 +33,7 @@ def bind_data(text: str, data: Any, variables={}, parsed: bool = False) -> str:
     # rebuild the text
     if not parsed:
         _text = get_mako_expression(_text)
+    # NOTE: directly return the text if it's not a mako expression
     if not _text:
         return text
     # TODO: validate the text for security issues: [ "__", "exec", "str" , "import", ... ]

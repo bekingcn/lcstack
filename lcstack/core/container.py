@@ -11,6 +11,7 @@ from lcstack.components.chat_history.base import ChatHistoryFactory
 from .models import ChainableRunnables, ComponentType
 from .component import Component
 from .parsers.base import MappingParserArgs, NamedMappingParserArgs, PrimitiveOutputParser, StructOutputParser, parse_data_with_struct_mapping
+from .parsers.mako import eval_expr
 
 CHAT_HISTORY_PARAM_NAME = "chat_history"
 DEFAULT_CHAT_HISTORY_KEY = CHAT_HISTORY_PARAM_NAME
@@ -92,7 +93,9 @@ class RunnableContainer(BaseContainer):
                  shared=False,
                  memory: Optional[ChatHistoryFactory]=None, 
                  input_mapping: Dict[Optional[str], NamedMappingParserArgs]=None,
-                 output_mapping: Dict[Optional[str], NamedMappingParserArgs]=None):
+                 output_mapping: Dict[Optional[str], NamedMappingParserArgs]=None,
+                 input_expr: Optional[str]=None,
+                 output_expr: Optional[str]=None):
         super().__init__(name, component, init_kwargs, shared=shared,)
         
         if memory and not isinstance(self.memory, ChatHistoryFactory):
@@ -103,6 +106,8 @@ class RunnableContainer(BaseContainer):
         
         self.output_mapping = output_mapping
         self.input_mapping = input_mapping
+        self.input_expr = input_expr
+        self.output_expr = output_expr
     
     def _get_template_inputs(self) -> Dict[str, str]:
         # trying get the inputs from prompt templates        
@@ -147,6 +152,11 @@ class RunnableContainer(BaseContainer):
         return wrap_func
 
     def _original_input_parser(self, input):
+        # try expression first, assume only one of input_expr and input_mapping is specified
+        if self.input_expr:
+            input = eval_expr(self.input_expr, input)
+            if input is None:
+                raise ValueError(f"Invalid expression for workflow inputs: {self.input_expr}")
         if self.input_mapping:
             input = parse_data_with_struct_mapping(
                 data=input, 
@@ -168,6 +178,11 @@ class RunnableContainer(BaseContainer):
                 output_type=output_parser_type,
                 **args
             )
+        # try expression first, assume only one of input_expr and input_mapping is specified
+        if self.output_expr:
+            output = eval_expr(self.output_expr, output)
+            if output is None:
+                raise ValueError(f"Invalid expression for workflow inputs: {self.output_expr}")
         if self.output_mapping:
             output = parse_data_with_struct_mapping(
                 data=output, 
@@ -183,8 +198,8 @@ class RunnableContainer(BaseContainer):
         # TODO: make sure which runnable types should be chained with output parser?
         if self.component.component_type in ChainableRunnables:
             import functools
-            wrap_input = not all([k == v.name and v.output_type == OutputParserType.pass_through for k, v in self.inputs.items()]) or self.input_mapping
-            wrap_output = self.default_output_parser_args.output_type != OutputParserType.pass_through or self.output_mapping
+            wrap_input = not all([k == v.name and v.output_type == OutputParserType.pass_through for k, v in self.inputs.items()]) or self.input_mapping or self.input_expr
+            wrap_output = self.default_output_parser_args.output_type != OutputParserType.pass_through or self.output_mapping or self.output_expr
             if wrap_input and wrap_output:
                 _runnable = (
                     self._original_input_parser

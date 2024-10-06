@@ -2,6 +2,7 @@ import enum
 from typing import Any, Dict, List, Optional, Union
 from pydantic import BaseModel, Field
 
+from lcstack.configs import get_expr_enabled
 from lcstack.core.parsers.base import MappingParserArgs, NamedMappingParserArgs, OutputParserType, rebuild_struct_mapping
 
 class ComponentType(str, enum.Enum):
@@ -75,16 +76,29 @@ class InitializerDataConfig(BaseModel):
     # support input_mapping on config level
     # following above rules: any -> any
     input_mapping: Union[str, Dict[Optional[str], Optional[Union[str, NamedMappingParserArgs]]]] = Field(default_factory=dict, )
+    input_expr: Optional[str] = None
+    output_expr: Optional[str] = None
 
     # arguments to be passed to func_or_class
     kwargs: Optional[Dict[str, Any]] = {}
 
     def __init__(self, **data):
         super().__init__(**data)
-        for k in ["input_mapping", "output_mapping"]:
+        for k in ["input_mapping", "output_mapping", "input_expr", "output_expr"]:
             data.pop(k, None)
 
         self.kwargs.update(data)
+        
+        if get_expr_enabled():
+            if self.input_mapping and self.input_expr:
+                raise ValueError("Cannot specify both `input_mapping` and `input_expr`")
+            if self.output_mapping and self.output_expr:
+                raise ValueError("Cannot specify both `output_mapping` and `output_expr`")
+        else:
+            if self.input_expr or self.output_expr:
+                # or, just ignore it
+                self.input_expr, self.output_expr = None, None
+                # raise ValueError("Cannot specify `input_expr` or `output_expr` when expression is not enabled")
         
         # rebuild output_mapping
         self.output_mapping = rebuild_struct_mapping(self.output_mapping, check_args=True)

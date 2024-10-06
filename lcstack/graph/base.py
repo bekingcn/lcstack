@@ -330,7 +330,7 @@ class Workflow:
                 # add the default values
                 return {**self._default_dict, **eval_result}
             else:
-                raise ValueError(f"Invalid expression result for workflow inputs: {eval_result}")
+                raise ValueError(f"Expected expression result to be a dict, but invalid expression for workflow: {self.input_expr}")
         
         # convert mapping to dict[str, str]
         input_mapping = {sn: inn.name if isinstance(inn, NamedMappingParserArgs) else inn for sn, inn in self.input_mapping.items()}        
@@ -371,17 +371,17 @@ class Workflow:
 
     def _enter_node_func(self, node_name: str, input_mapping: Dict[Optional[str], NamedMappingParserArgs], input_expr: Optional[str]):
         def enter_node(state):
-            # try expression first
-            if input_expr:
-                eval_result = eval_expr(input_expr, state)
-                return eval_result
 
             # save a copy of the state
             state_snapshot = deepcopy(state)
             self.intermediate_steps.append((node_name, state_snapshot, ))
 
-            # pop the value when it is None
-            return parse_data_with_struct_mapping(state, input_mapping)
+            # try expression first
+            if input_expr:
+                eval_result = eval_expr(input_expr, state)
+                return eval_result
+            else:
+                return parse_data_with_struct_mapping(state, input_mapping)
 
         return enter_node
 
@@ -416,7 +416,7 @@ class Workflow:
                 if isinstance(eval_result, dict):
                     return eval_result
                 else:
-                    raise ValueError(f"Invalid expression result for vertex outputs: {eval_result}")
+                    raise ValueError(f"Expected expression result to be a dict, but invalid output expression: {output_expr}")
             # convert the output to a dict
             return self._data_to_state(outputs, new_mapping)
 

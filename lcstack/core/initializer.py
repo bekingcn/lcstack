@@ -189,10 +189,6 @@ class BaseInitializer(BaseModel):
 
         new_kwargs = self.parsed_kwargs.copy()
         new_kwargs.update(kwargs)
-        
-        # prirority: config > Component > default (pass_through)
-        output_mapping = self.initializer_config.data.output_mapping
-        input_mapping = self.initializer_config.data.input_mapping
 
         # inst = self.func_or_class(**kwargs)
         if self.component.component_type in NonRunnables:
@@ -209,8 +205,11 @@ class BaseInitializer(BaseModel):
                 shared=False,
                 # must pop this key, cause it's common parameter as needed
                 memory=new_kwargs.pop(CHAT_HISTORY_PARAM_NAME, None),
-                input_mapping=input_mapping,
-                output_mapping=output_mapping)
+                input_mapping=self.initializer_config.data.input_mapping,
+                output_mapping=self.initializer_config.data.output_mapping,
+                input_expr=self.initializer_config.data.input_expr,
+                output_expr=self.initializer_config.data.output_expr
+            )
 
 class BaseComponentInitializer(BaseInitializer):
 
