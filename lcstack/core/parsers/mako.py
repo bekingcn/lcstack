@@ -23,6 +23,15 @@ class _MakoWrapper:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
+def bind_functions(text):
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+    return {
+        "AIMessage": AIMessage,
+        "HumanMessage": HumanMessage,
+        "SystemMessage": SystemMessage,
+        "ToolMessage": ToolMessage,
+    }
+
 # TODO: which types should be supported here? str, dict, message, list(?) etc
 def bind_data(text: str, data: Any, variables={}, parsed: bool = False) -> str:
     _text = text
@@ -37,8 +46,12 @@ def bind_data(text: str, data: Any, variables={}, parsed: bool = False) -> str:
     if not _text:
         return text
     # TODO: validate the text for security issues: [ "__", "exec", "str" , "import", ... ]
-    _text = f"<% _.value = {_text} %>"
-    mako_template = Template(_text)
+    # _text = f"<% _.value = {_text} %>"
+    mako_template = Template(
+        _text, 
+        # add prefix with preprocessor
+        preprocessor=lambda text: f"<% _.value = {text} %>"
+    )
     ret_value = _MakoWrapper(value=None)
     
     outer_data = {
@@ -47,6 +60,8 @@ def bind_data(text: str, data: Any, variables={}, parsed: bool = False) -> str:
         "_": ret_value,
         "__import__": None,
         # "self": _MakoWrapper(value=None),
+        # add message functions or something
+        **bind_functions(_text),
     }
 
     print("mako text", text)

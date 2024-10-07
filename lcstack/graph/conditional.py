@@ -40,7 +40,6 @@ class ConditionalBranch(BaseModel):
             return any([c["property"] in state and state[c["property"]] == c["value"] for c in self.conditions])
     
     
-    # TODO: finish this better
     @classmethod
     def parse_value(cls, state: Dict, expr: str) -> Any:
         ret = expr
@@ -55,8 +54,8 @@ class ConditionalBranch(BaseModel):
             return eval_expr(expr, state)
         return ret
 
-# TODO: support jinja template for conditions check and result setter
-class JinjaBranch(BaseModel):
+# TODO: support mako or jinja template for conditions check and result setter separately ?
+class ExpressionBranch(BaseModel):
     conditions: str
     next: str
     setters: Optional[str] = None
@@ -99,7 +98,7 @@ class ConditionalWorkflow(Workflow):
         self._model = graph_config
 
     def _branch_func(self, branch_vertex: BranchsVertex, this_name: str):
-        def _func(state):
+        def route_to_node(state):
             state = state
             # check if it's from a setter node
             branch_steps = state.get(NAME_BRANCH_STEPS, None)
@@ -118,7 +117,7 @@ class ConditionalWorkflow(Workflow):
         else:
             # path_map[NAME_GRAPH_DEFAULT_BRANCH] = END
             raise ValueError(f"no default `branch` (or `next`) specified in vertex {this_name}")
-        return _func, path_map
+        return route_to_node, path_map
 
     def _add_conditional_edges(self, graph: StateGraph, from_node_name: str, this_name, branch_vertex: BranchsVertex):
         func, path_map = self._branch_func(branch_vertex, this_name)
@@ -129,11 +128,11 @@ class ConditionalWorkflow(Workflow):
         )
 
     def _setters_func(self, this_name: str, branch_vertex: BranchsVertex):
-        def _func(state):
+        def update_state(state):
             next_node, outputs = branch_vertex.match_and_set(state)
             outputs[NAME_BRANCH_STEPS] = [(this_name, next_node, )]
             return outputs
-        return _func
+        return update_state
 
     def _add_setters_and_conditional_edges(
             self, 
