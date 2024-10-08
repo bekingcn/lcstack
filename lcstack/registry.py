@@ -73,14 +73,14 @@ INITIALIZER_NAME_INDEXING_PIPELINE = "indexing_pipeline"
 _COMPONENTS_REGISTRY: dict[str, Component] = {}
 
 
-def register_component(name, component: Component):
+def register_component(name: str, component: Component):
     if name in _COMPONENTS_REGISTRY:
         raise ValueError(f"Component {name} already registered")
     _COMPONENTS_REGISTRY[name] = component
     return component
 
 
-def get_component(name) -> Component:
+def get_component(name: str) -> Component:
     component = _COMPONENTS_REGISTRY.get(name, None)
     if not component:
         raise ValueError(f"Component {name} not found")

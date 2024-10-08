@@ -4,11 +4,7 @@ from typing import Iterator, Optional, Union
 
 from langchain_core.documents import Document
 from langchain_community.document_loaders.blob_loaders.schema import Blob
-
 from langchain_community.document_loaders.base import BaseLoader
-
-logger = logging.getLogger(__name__)
-
 
 class EpubLibEpubLoader(BaseLoader):
     """Load `epub` files and parse them with `ebooklib`."""
@@ -28,7 +24,7 @@ class EpubLibEpubLoader(BaseLoader):
             bodywidth: The width of the body. 0 means no limit.
         """
         try:
-            import ebooklib  # type: ignore
+            import ebooklib  # type: ignore # noqa: F401
         except ImportError:
             raise ImportError(
                 "ebooklib package not found, please install it with "
@@ -38,6 +34,8 @@ class EpubLibEpubLoader(BaseLoader):
         self.file_path = file_path
         self.bodywidth = bodywidth
         self.load_images = load_images
+
+        self.book: ebooklib.epub.EpubBook | None = None
 
     def lazy_load(self) -> Iterator[Document]:
         """Load HTML document into document objects."""
@@ -106,15 +104,15 @@ class EpubLibEpubLoader(BaseLoader):
         #         yield blob
         return
 
-    def yield_blobs(self, book=None) -> Iterator[Blob]:
+    def yield_blobs(self) -> Iterator[Blob]:
         """Yield images in the epub."""
 
-        from ebooklib import epub, ITEM_IMAGE
+        from ebooklib import epub, ITEM_IMAGE  # type: ignore
 
-        if book is None:
-            book: epub.EpubBook = epub.read_epub(self.file_path)
-        else:
-            book: epub.EpubBook = book
+        if not self.book:
+            self.book = epub.read_epub(self.file_path)
+        book = self.book
+
         images = book.get_items_of_type(ITEM_IMAGE)
         book_creator = [creator[0] for creator in book.get_metadata("DC", "creator")]
         for image in images:
@@ -136,34 +134,3 @@ class EpubLibEpubLoader(BaseLoader):
                 metadata=metadata,
             )
             yield blob
-
-
-if __name__ == "__main__":
-    epub_file = "../data/An Introduction to Critical Thinking.epub"
-    epub_file = "../data/Apache Iceberg The Definitive Guide.epub"
-    epub_file = "../data/Data Management at Scale 2nd Edition.epub"
-    root_path = "../data/books"
-    import os
-    import sys
-
-    if len(sys.argv) > 1:
-        epub_file = sys.argv[1]
-    if len(sys.argv) > 2:
-        root_path = sys.argv[2]
-    loader = EpubLibEpubLoader(epub_file, bodywidth=0)
-    book_name = os.path.split(epub_file)[-1]
-    book_name, _ = os.path.splitext(book_name)
-    book_path = os.path.join(root_path, book_name)
-    if not os.path.exists(book_path):
-        os.makedirs(book_path)
-    with open(f"{book_path}/{book_name}.md", "w", encoding="utf-8") as f:
-        for doc in loader.load():
-            f.write(doc.page_content)
-            f.write("\n\n")
-    # move the images out of the epub (./Images/)
-    image_path = os.path.join(book_path, "Images")
-    if not os.path.exists(image_path):
-        os.makedirs(image_path)
-    for blob in loader.yield_blobs():
-        with open(os.path.join(book_path, blob.metadata["file"]), "wb") as f:
-            f.write(blob.data)
