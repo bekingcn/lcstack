@@ -6,8 +6,8 @@ repos:
     # Run the linter.
     - id: ruff
       name: Run Linter Check (Ruff)
-      # args: [ --fix ]
-      files: ^(tests|examples)/
+      args: [ --fix ]
+      files: ^(lcstack|tests)/
     # Run the formatter.
     - id: ruff-format
       name: Run Formatter (Ruff)

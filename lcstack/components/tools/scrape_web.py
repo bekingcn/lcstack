@@ -1,6 +1,7 @@
 from langchain_community.document_loaders.web_base import WebBaseLoader
 from langchain_core.tools import tool
 
+
 def create_tool_scrape_webpages():
     @tool
     def scrape_webpages(urls: list) -> str:
@@ -13,4 +14,5 @@ def create_tool_scrape_webpages():
                 for doc in docs
             ]
         )
+
     return scrape_webpages

@@ -2,16 +2,19 @@ from langgraph.prebuilt import ToolNode, create_react_agent
 from langgraph.graph import END, MessageGraph
 from langchain_core.messages import HumanMessage
 
+
 # TODO: how and which to use them
 # - react_agent: langchain agent with StateGraph
 # - tools_agetn: custom agent with MessageGraph
 # - create_tools_agent_node (agent_supervisor.py): run agent with tools with ToolExecutor
-def react_agent(llm,
+def react_agent(
+    llm,
     messages_modifier: str = None,
-    checkpointer = None,
+    checkpointer=None,
     debug: bool = False,
-    wrapping = True,
-    **kwargs):
+    wrapping=True,
+    **kwargs,
+):
     tools = []
     if "tools" in kwargs:
         tools = kwargs["tools"]
@@ -20,11 +23,25 @@ def react_agent(llm,
         for k, v in kwargs.items():
             if k.startswith("tool_"):
                 tools.append(v)
-    agent = create_react_agent(llm, tools, messages_modifier=messages_modifier, checkpointer=checkpointer, debug=debug)
-    _enter = lambda x: {"messages": [HumanMessage(content=x)]} if isinstance(x, str) else x
-    _exit = lambda x: x.get("messages", [])[-1]
+    agent = create_react_agent(
+        llm,
+        tools,
+        messages_modifier=messages_modifier,
+        checkpointer=checkpointer,
+        debug=debug,
+    )
     if wrapping:
-        return _enter | agent | _exit
+        return (
+            (  # enter conversation
+                lambda x: {"messages": [HumanMessage(content=x)]}
+                if isinstance(x, str)
+                else x
+            )
+            | agent
+            | (  # exit conversation
+                lambda x: x.get("messages", [])[-1]
+            )
+        )
     return agent
 
 
@@ -35,6 +52,7 @@ def should_continue(messages):
         return END
     else:
         return "tools"
+
 
 def tools_agent(llm, **kwargs):
     # Define a new graph
@@ -52,9 +70,7 @@ def tools_agent(llm, **kwargs):
 
     # Conditional agent -> action OR agent -> END
     workflow.add_conditional_edges(
-        "agent__llm",
-        should_continue,
-        {"tools": "agent__tools", END: END}
+        "agent__llm", should_continue, {"tools": "agent__tools", END: END}
     )
 
     # Always transition `action` -> `agent`

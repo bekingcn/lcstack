@@ -16,11 +16,18 @@ Args:
                 1 for minimum diversity and 0 for maximum. (Default: 0.5)
             filter: Filter by document metadata
 """
+
+
 def load_vectorstore_retriever(vectorstore: VectorStore, **kwargs):
     search_type = kwargs.get("search_type", "similarity")
-    search_kwargs = kwargs.get("search_kwargs", {
-        'k': 4,
-        'lambda_mult': 0.5,
-        "fetch_k": 20,
-    })
-    return vectorstore.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
+    search_kwargs = kwargs.get(
+        "search_kwargs",
+        {
+            "k": 4,
+            "lambda_mult": 0.5,
+            "fetch_k": 20,
+        },
+    )
+    return vectorstore.as_retriever(
+        search_type=search_type, search_kwargs=search_kwargs
+    )

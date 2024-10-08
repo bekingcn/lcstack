@@ -7,8 +7,11 @@ from typing import Callable, Optional
 import yaml
 
 ## Parsing the YAML config
-    
-def load_flatten_settings(settings_file: str, dict_as_value: bool = False, tags: dict = {}):
+
+
+def load_flatten_settings(
+    settings_file: str, dict_as_value: bool = False, tags: dict = {}
+):
     class _Loader(yaml.SafeLoader):
         pass
 
@@ -16,6 +19,7 @@ def load_flatten_settings(settings_file: str, dict_as_value: bool = False, tags:
         _Loader.add_implicit_resolver(tag, pattern, None)
         _Loader.add_constructor(tag, constructor_variables_func(tags[tag]))
     settings = yaml.load(open(settings_file, "r"), Loader=_Loader)
+
     # flatten settings, and convert to dict, connect keys with "." as separator for nested keys
     def _flatten(d, parent_key="", sep="."):
         d = d or {}
@@ -31,11 +35,14 @@ def load_flatten_settings(settings_file: str, dict_as_value: bool = False, tags:
             else:
                 items.append((new_key, v))
         return dict(items)
+
     settings = _flatten(settings)
     return settings
 
+
 # pattern for global vars: look for ${word}
-pattern = re.compile('.*?\${(\s*[\w.]+\s*)}.*?')
+pattern = re.compile(".*?\${(\s*[\w.]+\s*)}.*?")
+
 
 # the tag will be used to mark where to start searching for the pattern
 # e.g. somekey: !ENV somestring${MYENVVAR}blah blah blah
@@ -46,10 +53,11 @@ def constructor_variables_func(vars):
     elif isinstance(vars, Callable):
         _get_item = vars
     else:
-        raise Exception(f'Not supported type to get item from: {type(vars)}')
-    def _func(loader, node):            
+        raise Exception(f"Not supported type to get item from: {type(vars)}")
+
+    def _func(loader, node):
         node: yaml.ScalarNode = node
-        loader : yaml.SafeLoader = loader
+        loader: yaml.SafeLoader = loader
         """
         Extracts the environment variable from the node's value
         :param yaml.Loader loader: the yaml loader
@@ -65,17 +73,21 @@ def constructor_variables_func(vars):
                 replaced_value = _get_item(g.strip(), g)
                 if isinstance(replaced_value, str):
                     full_value = full_value.replace(
-                        f'${{{g}}}', _get_item(g.strip(), g)
+                        f"${{{g}}}", _get_item(g.strip(), g)
                     )
                 else:
                     # replaced_value could be a list, dict, or primitive value
-                    if f'${{{g}}}' == value:
+                    if f"${{{g}}}" == value:
                         full_value = replaced_value
                     else:
-                        raise Exception(f'Cannot replace value with dict or list: {value}')
+                        raise Exception(
+                            f"Cannot replace value with dict or list: {value}"
+                        )
             return full_value
         return value
+
     return _func
+
 
 # !ENV, !CONF, !REF ...
 def parse_config(data=None, tags={}):
@@ -98,7 +110,7 @@ def parse_config(data=None, tags={}):
     :return: the dict configuration
     :rtype: dict[str, T]
     """
-    
+
     class _Loader(yaml.SafeLoader):
         pass
 
@@ -107,18 +119,21 @@ def parse_config(data=None, tags={}):
         _Loader.add_constructor(tag, constructor_variables_func(tags[tag]))
     return yaml.load(data, Loader=_Loader)
 
+
 ## Drawing graphs with Mermaid
+
 
 def _escape_node_label(node_label: str) -> str:
     """Escapes the node label for Mermaid syntax."""
     return re.sub(r"[^0-9a-zA-Z-_:#]", "_", node_label)
+
 
 # function to draw the mermaid graph
 def draw_mermaid(nodes, edges):
     # create the mermaid
     mermaid_graph = "graph TD;\n"
     for n, v in nodes.items():
-        mermaid_graph += f"{_escape_node_label(n)}[\"`{v}`\"];\n"
+        mermaid_graph += f'{_escape_node_label(n)}["`{v}`"];\n'
     edge_label = " --> "
     for e in edges:
         source, target, label = e
@@ -130,11 +145,13 @@ def draw_mermaid(nodes, edges):
         )
     return mermaid_graph
 
+
 class MermaidDrawMethod(Enum):
     """Enum for different draw methods supported by Mermaid"""
 
     PYPPETEER = "pyppeteer"  # Uses Pyppeteer to render the graph
     API = "api"  # Uses Mermaid.INK API to render the graph
+
 
 def _render_mermaid_using_api(
     mermaid_syntax: str,
@@ -178,6 +195,7 @@ def _render_mermaid_using_api(
             f"Status code: {response.status_code}."
         )
 
+
 def draw_mermaid_png(
     mermaid_syntax: str,
     output_file_path: Optional[str] = None,
@@ -187,13 +205,13 @@ def draw_mermaid_png(
 ) -> bytes:
     """Draws a Mermaid graph as PNG using provided syntax."""
     if draw_method == MermaidDrawMethod.PYPPETEER:
-        import asyncio
-
-        img_bytes = asyncio.run(
-            _render_mermaid_using_pyppeteer(
-                mermaid_syntax, output_file_path, background_color, padding
-            )
-        )
+        raise NotImplementedError("Pyppeteer with Mermaid is not supported yet.")
+        # import asyncio
+        # img_bytes = asyncio.run(
+        #     _render_mermaid_using_pyppeteer(
+        #         mermaid_syntax, output_file_path, background_color, padding
+        #     )
+        # )
     elif draw_method == MermaidDrawMethod.API:
         img_bytes = _render_mermaid_using_api(
             mermaid_syntax, output_file_path, background_color

@@ -1,13 +1,24 @@
 from typing import List
-from langchain_core.tracers.stdout import ConsoleCallbackHandler as _ConsoleCallbackHandler
+from langchain_core.tracers.stdout import (
+    ConsoleCallbackHandler as _ConsoleCallbackHandler,
+)
+
 
 class ConsoleCallbackHandler(_ConsoleCallbackHandler):
     name: str = "lcstackconsole_callback_handler"
+
     def __init__(self, callbacks: List[str] = None, **kwargs) -> None:
         """Tracer that prints to the console."""
         super().__init__(**kwargs)
 
-        self.callbacks = callbacks or ["llm", "chain", "agent", "retriever", "custom_event", "retry"]
+        self.callbacks = callbacks or [
+            "llm",
+            "chain",
+            "agent",
+            "retriever",
+            "custom_event",
+            "retry",
+        ]
 
     @property
     def ignore_llm(self) -> bool:

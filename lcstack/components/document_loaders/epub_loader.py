@@ -1,9 +1,9 @@
 import logging
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Union
+from typing import Iterator, Optional, Union
 
 from langchain_core.documents import Document
-from langchain_community.document_loaders.blob_loaders.schema import Blob, BlobLoader
+from langchain_community.document_loaders.blob_loaders.schema import Blob
 
 from langchain_community.document_loaders.base import BaseLoader
 
@@ -28,7 +28,7 @@ class EpubLibEpubLoader(BaseLoader):
             bodywidth: The width of the body. 0 means no limit.
         """
         try:
-            import ebooklib
+            import ebooklib  # type: ignore
         except ImportError:
             raise ImportError(
                 "ebooklib package not found, please install it with "
@@ -42,27 +42,29 @@ class EpubLibEpubLoader(BaseLoader):
     def lazy_load(self) -> Iterator[Document]:
         """Load HTML document into document objects."""
         import html2text
-        from ebooklib import epub, ITEM_DOCUMENT # support html only for now
+        from ebooklib import epub, ITEM_DOCUMENT  # support html only for now
 
         book: epub.EpubBook = epub.read_epub(self.file_path)
 
         pages = book.get_items_of_type(ITEM_DOCUMENT)
-        book_creator = [creator[0] for creator in book.get_metadata('DC', 'creator')]
+        book_creator = [creator[0] for creator in book.get_metadata("DC", "creator")]
         index = 0
         # parse toc, Link or Section
         # we parse the top level toc only
         toc = []
+
         def _get_toc(links):
-            for l in links:
-                if isinstance(l, tuple) or isinstance(l, list):
-                    _section, _links = l
+            for link in links:
+                if isinstance(link, tuple) or isinstance(link, list):
+                    _section, _links = link
                     title = _section.title
                     parts = _section.href.split("#")
                     uid = parts[1] if len(parts) > 1 else None
                     href = parts[0]
                     toc.append((href, (title, uid)))
                 else:
-                    toc.append((l.href.split("#")[0], (l.title, l.uid)))
+                    toc.append((link.href.split("#")[0], (link.title, link.uid)))
+
         _get_toc(book.toc)
         toc_map = dict(toc)
         for page in pages:
@@ -94,7 +96,7 @@ class EpubLibEpubLoader(BaseLoader):
                 "lang": page.lang or book.language,
                 "direction": page.direction or "",
                 "index": index,
-                "is_chapter": page.is_chapter()
+                "is_chapter": page.is_chapter(),
             }
             yield Document(page_content=text, metadata=metadata)
 
@@ -108,12 +110,13 @@ class EpubLibEpubLoader(BaseLoader):
         """Yield images in the epub."""
 
         from ebooklib import epub, ITEM_IMAGE
+
         if book is None:
             book: epub.EpubBook = epub.read_epub(self.file_path)
         else:
             book: epub.EpubBook = book
         images = book.get_items_of_type(ITEM_IMAGE)
-        book_creator = [creator[0] for creator in book.get_metadata('DC', 'creator')]
+        book_creator = [creator[0] for creator in book.get_metadata("DC", "creator")]
         for image in images:
             image: epub.EpubImage = image
             metadata = {
@@ -125,16 +128,24 @@ class EpubLibEpubLoader(BaseLoader):
                 "book_uid": book.uid,
                 "book_creator": ", ".join(book_creator),
             }
-            blob = Blob.from_data(image.content, mime_type=image.media_type, encoding="binary", path=image.file_name, metadata=metadata)
+            blob = Blob.from_data(
+                image.content,
+                mime_type=image.media_type,
+                encoding="binary",
+                path=image.file_name,
+                metadata=metadata,
+            )
             yield blob
+
 
 if __name__ == "__main__":
     epub_file = "../data/An Introduction to Critical Thinking.epub"
     epub_file = "../data/Apache Iceberg The Definitive Guide.epub"
     epub_file = "../data/Data Management at Scale 2nd Edition.epub"
     root_path = "../data/books"
-    import json, os
+    import os
     import sys
+
     if len(sys.argv) > 1:
         epub_file = sys.argv[1]
     if len(sys.argv) > 2:

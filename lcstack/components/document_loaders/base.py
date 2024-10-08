@@ -1,3 +1,4 @@
+from typing import List, Type, Dict, Any
 
 from langchain_community.document_loaders import (
     CSVLoader,
@@ -5,7 +6,6 @@ from langchain_community.document_loaders import (
     PyMuPDFLoader,
     TextLoader,
     UnstructuredEmailLoader,
-    UnstructuredEPubLoader,
     UnstructuredHTMLLoader,
     UnstructuredMarkdownLoader,
     UnstructuredODTLoader,
@@ -13,13 +13,29 @@ from langchain_community.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 from langchain_community.document_loaders.base import BaseLoader
-from typing import List, Type
 from langchain.docstore.document import Document
+from langchain_core.runnables import RunnablePassthrough, Runnable
+
 from .epub_loader import EpubLibEpubLoader
+
 
 LOADER_MAPPING = {
     # NOTE: this is a config for book csv
-    ".bookcsv": (CSVLoader, {"metadata_columns": ["name", "id", "type", "topic", "author", "language", "sn", "cover"]}),
+    ".bookcsv": (
+        CSVLoader,
+        {
+            "metadata_columns": [
+                "name",
+                "id",
+                "type",
+                "topic",
+                "author",
+                "language",
+                "sn",
+                "cover",
+            ]
+        },
+    ),
     ".csv": (CSVLoader, {}),
     # ".docx": (Docx2txtLoader, {}),
     ".doc": (UnstructuredWordDocumentLoader, {}),
@@ -38,14 +54,16 @@ LOADER_MAPPING = {
     # Add more mappings for other file extensions and loaders as needed
 }
 
+
 class GenericDocumentLoader(BaseLoader):
-    def __init__(self, file_path: str=None, extensions: list[str]=None, **kwargs):
+    def __init__(self, file_path: str = None, extensions: list[str] = None, **kwargs):
         self.kwargs = kwargs
         self.file_path = file_path
         self.extensions = extensions
 
     def load(self) -> List[Document]:
         import os
+
         # TODO: support multiple files at once
         if os.path.isfile(self.file_path):
             file_paths = [self.file_path]
@@ -69,26 +87,27 @@ class GenericDocumentLoader(BaseLoader):
             else:
                 raise ValueError(f"Unsupported file extension '{ext}'")
         return documents
-    
+
     # NOTE: this works globally
     @classmethod
     def add_loader(cls, extension: str, loader_class: Type[BaseLoader] | str, **kwargs):
         LOADER_MAPPING[extension] = (loader_class, kwargs or {})
 
-from langchain_core.runnables import RunnablePassthrough, Runnable
-from langchain.docstore.document import Document
-from typing import Dict, Any, Union
-from typing_extensions import TypedDict
 
 def create_typed_document_loader_chain(
-        loader_class: Type[BaseLoader] | str,
-        text_splitter=None,
-) -> Runnable[Dict[str, Any], List[Document]]: # type: ignore
+    loader_class: Type[BaseLoader] | str,
+    text_splitter=None,
+) -> Runnable[Dict[str, Any], List[Document]]:  # type: ignore
     _loader_class = loader_class
     if isinstance(loader_class, str):
         # import a type from a string
         import importlib
-        loader_class = getattr(importlib.import_module("langchain_community.document_loaders"), loader_class, None)
+
+        loader_class = getattr(
+            importlib.import_module("langchain_community.document_loaders"),
+            loader_class,
+            None,
+        )
         if not loader_class:
             parts = _loader_class.rsplit(".", 1)
             if len(parts) == 2:
@@ -99,15 +118,19 @@ def create_typed_document_loader_chain(
     if not loader_class:
         raise ValueError(f"Unknown document loader: {_loader_class}")
     if not issubclass(loader_class, BaseLoader):
-        raise ValueError(f"Document loader {_loader_class} is not a subclass of BaseLoader")
-    return (
-        RunnablePassthrough.assign()
-        | (
-            lambda x: text_splitter.split_documents(loader_class(**x).load()) if text_splitter else loader_class(**x).load()
+        raise ValueError(
+            f"Document loader {_loader_class} is not a subclass of BaseLoader"
         )
+    return RunnablePassthrough.assign() | (
+        lambda x: text_splitter.split_documents(loader_class(**x).load())
+        if text_splitter
+        else loader_class(**x).load()
     )
 
-def create_document_loader_chain(text_splitter=None) -> Runnable[Dict[str, Any], List[Document]]:
+
+def create_document_loader_chain(
+    text_splitter=None,
+) -> Runnable[Dict[str, Any], List[Document]]:
     return create_typed_document_loader_chain(GenericDocumentLoader, text_splitter)
     # return (
     #     RunnablePassthrough.assign(**kwargs)
@@ -115,4 +138,3 @@ def create_document_loader_chain(text_splitter=None) -> Runnable[Dict[str, Any],
     #         lambda x: GenericDocumentLoader(file_path=x["file_path"], extensions=x.get("extensions", None), **kwargs).load()
     #     )
     # )
-    

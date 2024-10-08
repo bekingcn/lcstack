@@ -1,10 +1,11 @@
 import operator
 from typing import Annotated, List, Literal, Tuple, TypedDict, Union
 from pydantic import BaseModel, Field
-        
-from langgraph.graph import StateGraph, START, END
+
+from langgraph.graph import StateGraph, START
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
+
 
 class Plan(BaseModel):
     """Plan to follow in future"""
@@ -27,6 +28,7 @@ class Act(BaseModel):
         description="Action to perform. If you want to respond to user, use Response. "
         "If you need to further use tools to get the answer, use Plan."
     )
+
 
 _planner_prompt = ChatPromptTemplate.from_messages(
     [
@@ -57,11 +59,13 @@ You have currently done the follow steps:
 Update your plan accordingly. If no more steps are needed and you can return to the user, then respond with that. Otherwise, fill out the plan. Only add steps to the plan that still NEED to be done. Do not return previously done steps as part of the plan."""
 )
 
+
 class PlanExecute(TypedDict):
     input: str
     plan: List[str]
     past_steps: Annotated[List[Tuple], operator.add]
     response: str
+
 
 def create_plan_and_execute_agent(llm, tools_agent, planer_llm=None):
     planer_llm = planer_llm or llm
@@ -76,16 +80,16 @@ def create_plan_and_execute_agent(llm, tools_agent, planer_llm=None):
             past_steps = state["past_steps"]
             finak_answer = past_steps[-1][1]
             return {
-                "past_steps": [("No more steps to execute.", "Respond final answer with Response.")],
+                "past_steps": [
+                    ("No more steps to execute.", "Respond final answer with Response.")
+                ],
                 "response": finak_answer,
-                }
+            }
         task = plan[0]
         task_formatted = f"""For the following plan:
 {plan_str}\n\nYou are tasked with executing step {1}, {task}.
 """
-        agent_response = tools_agent.invoke(
-            {"messages": [("user", task_formatted)]}
-        )
+        agent_response = tools_agent.invoke({"messages": [("user", task_formatted)]})
         return {
             "past_steps": [(task, agent_response["messages"][-1].content)],
         }
@@ -130,10 +134,12 @@ def create_plan_and_execute_agent(llm, tools_agent, planer_llm=None):
 
     return compiled_workflow
 
+
 # This is a simple agent without replanning
 def create_react_with_plan_agent(llm, tools_agent, planer_llm=None):
     planer_llm = planer_llm or llm
     planner = _planner_prompt | planer_llm.with_structured_output(Plan)
+
     def execute_step(state):
         question = state["input"]
         plan = state["plan"]
@@ -145,9 +151,7 @@ Planned steps:
 
 You are tasked with these steps one at a time.
 """
-        agent_response = tools_agent.invoke(
-            {"messages": [("user", task_formatted)]}
-        )
+        agent_response = tools_agent.invoke({"messages": [("user", task_formatted)]})
         return {
             "response": agent_response["messages"][-1].content,
         }
@@ -160,9 +164,14 @@ You are tasked with these steps one at a time.
     ).with_config(run_name="react_with_plan")
     return chain
 
+
 # Here we have a plan and execute from langchain implementation
 def create_lc_plan_and_execute_agent(llm, tools, planer_llm=None, **kwargs):
-    from langchain_experimental.plan_and_execute import load_agent_executor, load_chat_planner, PlanAndExecute
+    from langchain_experimental.plan_and_execute import (
+        load_agent_executor,
+        load_chat_planner,
+        PlanAndExecute,
+    )
 
     planer_llm = planer_llm or llm
 
@@ -179,6 +188,8 @@ def create_lc_plan_and_execute_agent(llm, tools, planer_llm=None, **kwargs):
     executor = load_agent_executor(llm, _tools)
 
     output_key = "response" if "output_key" not in kwargs else kwargs.pop("output_key")
-    plan_and_execute = PlanAndExecute(planner=planner, executor=executor, output_key=output_key, **kwargs)
+    plan_and_execute = PlanAndExecute(
+        planner=planner, executor=executor, output_key=output_key, **kwargs
+    )
 
     return plan_and_execute

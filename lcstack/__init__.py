@@ -7,6 +7,7 @@ from .core.parsers import DataType
 
 from .core.initializer import initializer_class_map
 from .graph.initializer import WorkflowInitializer
+
 initializer_class_map[ComponentType.StateGraph] = WorkflowInitializer
 
 __all__ = [

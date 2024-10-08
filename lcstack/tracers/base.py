@@ -1,8 +1,8 @@
-
 from typing import Any, Dict
 from langchain_core.tracers.base import BaseTracer
 from langchain_core.tracers.langchain import Run
 import datetime
+
 
 class SerializedCallbackHandler(BaseTracer):
     """Tracer that calls a function with a single str parameter."""
@@ -28,7 +28,9 @@ class SerializedCallbackHandler(BaseTracer):
             parent["children"] = parent.get("children", []) + [node]
         self.hierarchy[str(node["run_id"])] = node
 
-    def _on_node_outputs(self, node_id: Any, outputs: Any, end_time: datetime.datetime) -> None:
+    def _on_node_outputs(
+        self, node_id: Any, outputs: Any, end_time: datetime.datetime
+    ) -> None:
         node = self.hierarchy.get(str(node_id), None)
         node["outputs"] = outputs
         node["end_time"] = self._format_datetime(end_time)
@@ -40,7 +42,14 @@ class SerializedCallbackHandler(BaseTracer):
 
     # logging methods
     def _on_chain_start(self, run: Run) -> None:
-        current = {"run_id": str(run.id), "run_type": run.run_type, "name": run.name, "parent": str(run.parent_run_id), "inputs": run.inputs, "start_time": self._format_datetime(run.start_time)}
+        current = {
+            "run_id": str(run.id),
+            "run_type": run.run_type,
+            "name": run.name,
+            "parent": str(run.parent_run_id),
+            "inputs": run.inputs,
+            "start_time": self._format_datetime(run.start_time),
+        }
         self._on_node_create(run.parent_run_id, current)
 
     def _on_chain_end(self, run: Run) -> None:
@@ -57,7 +66,14 @@ class SerializedCallbackHandler(BaseTracer):
             if "prompts" in run.inputs
             else run.inputs
         )
-        current = {"run_id": str(run.id), "run_type": run.run_type, "name": run.name, "parent": str(run.parent_run_id), "inputs": inputs, "start_time": self._format_datetime(run.start_time)}
+        current = {
+            "run_id": str(run.id),
+            "run_type": run.run_type,
+            "name": run.name,
+            "parent": str(run.parent_run_id),
+            "inputs": inputs,
+            "start_time": self._format_datetime(run.start_time),
+        }
         self._on_node_create(run.parent_run_id, current)
 
     def _on_llm_end(self, run: Run) -> None:
@@ -69,7 +85,14 @@ class SerializedCallbackHandler(BaseTracer):
         self._on_node_error(run.id, run.error, run.end_time)
 
     def _on_tool_start(self, run: Run) -> None:
-        current = {"run_id": str(run.id), "run_type": run.run_type, "name": run.name, "parent": str(run.parent_run_id), "inputs": self.inputs, "start_time": self._format_datetime(run.start_time)}
+        current = {
+            "run_id": str(run.id),
+            "run_type": run.run_type,
+            "name": run.name,
+            "parent": str(run.parent_run_id),
+            "inputs": self.inputs,
+            "start_time": self._format_datetime(run.start_time),
+        }
         self._on_node_create(run.parent_run_id, current)
 
     def _on_tool_end(self, run: Run) -> None:

@@ -1,3 +1,5 @@
+from typing import Any, Dict, List, Optional
+
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import Runnable, RunnablePassthrough
 from langchain_core.prompts import BasePromptTemplate, ChatPromptTemplate
@@ -7,13 +9,13 @@ from langchain.chains.question_answering import load_qa_chain
 from langchain.chains.conversational_retrieval.base import ConversationalRetrievalChain
 from langchain.chains.qa_with_sources.retrieval import RetrievalQAWithSourcesChain
 from langchain.chains.llm import LLMChain
-from langchain.chains.question_answering import load_qa_chain
-from langchain.chains.sql_database.query import create_sql_query_chain as _create_sql_query_chain
-
+from langchain.chains.sql_database.query import (
+    create_sql_query_chain as _create_sql_query_chain,
+)
 from langchain_community.chains.llm_requests import LLMRequestsChain
 from langchain_community.utilities.sql_database import SQLDatabase
-
 from langchain.text_splitter import TextSplitter
+from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT
 
 from ..document_loaders import create_document_loader_chain
 
@@ -27,15 +29,15 @@ from ..document_loaders import create_document_loader_chain
         condense_question_llm: Optional[BaseLanguageModel] = None,
         combine_docs_chain_kwargs: Optional[Dict] = None,
 """
-from typing import Any, Dict, List, Optional
-from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT
+
+
 def load_conversational_retrieval_chain(
     llm,
     retriever,
-    condense_question_prompt = CONDENSE_QUESTION_PROMPT,
+    condense_question_prompt=CONDENSE_QUESTION_PROMPT,
     chain_type: str = "stuff",
     verbose: bool = False,
-    condense_question_llm = None,
+    condense_question_llm=None,
     combine_docs_chain_kwargs: Optional[Dict] = None,
     **kwargs: Any,
 ):
@@ -47,8 +49,9 @@ def load_conversational_retrieval_chain(
         verbose=verbose,
         condense_question_llm=condense_question_llm,
         combine_docs_chain_kwargs=combine_docs_chain_kwargs,
-        **kwargs
+        **kwargs,
     )
+
 
 """
 BaseQAWithSourcesChain.from_chain_type:
@@ -62,6 +65,8 @@ RetrievalQAWithSourcesChain:
     reduce_k_below_max_tokens: bool = False
     max_tokens_limit: int = 3375
 """
+
+
 def load_retrieval_qa_with_sources_chain(
     llm,
     retriever,
@@ -69,7 +74,7 @@ def load_retrieval_qa_with_sources_chain(
     chain_type_kwargs: Optional[dict] = None,
     reduce_k_below_max_tokens: bool = False,
     max_tokens_limit: int = 3375,
-    **kwargs
+    **kwargs,
 ):
     return RetrievalQAWithSourcesChain.from_chain_type(
         llm=llm,
@@ -78,17 +83,20 @@ def load_retrieval_qa_with_sources_chain(
         reduce_k_below_max_tokens=reduce_k_below_max_tokens,
         max_tokens_limit=max_tokens_limit,
         chain_type_kwargs=chain_type_kwargs,
-        **kwargs
+        **kwargs,
     )
 
-from langchain_core.vectorstores import VectorStore
+
 def _retrieve_with_search_kwargs(input_key, retriever, original_search_kwargs={}):
     original_search_kwargs = original_search_kwargs or {}
+
     def _func(input):
         search_kwargs = input.get("search_kwargs", None) or {}
         retriever.search_kwargs = {**original_search_kwargs, **search_kwargs}
         return retriever.invoke(input[input_key])
+
     return _func
+
 
 def load_retrieval_chain(
     llm,
@@ -103,21 +111,26 @@ def load_retrieval_chain(
     original_search_kwargs = retriever.search_kwargs
     search_kwargs = search_kwargs or {}
     original_search_kwargs.update(search_kwargs)
-    retrieval_docs = _retrieve_with_search_kwargs(input_key="question", retriever=retriever, original_search_kwargs=original_search_kwargs)
+    retrieval_docs = _retrieve_with_search_kwargs(
+        input_key="question",
+        retriever=retriever,
+        original_search_kwargs=original_search_kwargs,
+    )
     _chain_kwargs = chain_type_kwargs or {}
     combine_docs_chain = load_qa_chain(llm, chain_type=chain_type, **_chain_kwargs)
 
     retrieval_chain = (
         RunnablePassthrough.assign(
-            input_documents=retrieval_docs, # .with_config(run_name="retrieve_documents")
+            input_documents=retrieval_docs,  # .with_config(run_name="retrieve_documents")
         ).assign(answer=combine_docs_chain | (lambda x: x["output_text"]))
     ).with_config(run_name="retrieval_chain")
 
     return retrieval_chain
 
+
 def load_document_qa_chain(
     llm,
-    text_splitter: Optional[TextSplitter]=None,
+    text_splitter: Optional[TextSplitter] = None,
     chain_type: str = "stuff",
     chain_type_kwargs: Optional[dict] = None,
 ):
@@ -132,23 +145,19 @@ def load_document_qa_chain(
     ).with_config(run_name="document_qa_chain")
     return doc_qa_chain
 
+
 def load_llm_requests_chain(llm, prompt):
     llm_chain = LLMChain(llm=llm, prompt=prompt)
     chain = LLMRequestsChain(llm_chain=llm_chain)
     return chain
 
+
 def create_llm_chain(llm: Runnable, prompt: Runnable, return_str: bool = True):
     if return_str:
-        return (
-            prompt
-            | llm
-            | StrOutputParser()
-        )
+        return prompt | llm | StrOutputParser()
     else:
-        return (
-            prompt
-            | llm
-        )
+        return prompt | llm
+
 
 def create_sql_query_chain(
     llm: BaseLanguageModel,
@@ -163,6 +172,7 @@ def create_sql_query_chain(
     _db_kwargs = db_kwargs or {}
     db = SQLDatabase.from_uri(db_uri, engine_args=_engine_args, **_db_kwargs)
     return _create_sql_query_chain(llm=llm, db=db, prompt=prompt, k=k)
+
 
 def create_router_chain(
     llm: BaseLanguageModel,
@@ -181,29 +191,25 @@ Make sure to return ONLY a JSON blob with keys 'destination'.\n\n"""
         ]
     )
 
-    members_str = lambda x: ", ".join(x["members"][:-1]) + " or " + x["members"][-1]
     def router_query_schema(x):
         return {
             "name": "RouteQuery",
             "description": "Route query to destination.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "destination": {
-                        "enum": x["members"],
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "destination"
-                ]
-            }
+                "properties": {"destination": {"enum": x["members"], "type": "string"}},
+                "required": ["destination"],
+            },
         }
 
-    route_chain = (
-        RunnablePassthrough.assign(members=lambda x: x.get("members", default_members)).assign(members_str=members_str)
-        | (
-            lambda x: route_prompt | llm.with_structured_output(schema=router_query_schema(x), method=method, include_raw=False)
+    route_chain = RunnablePassthrough.assign(
+        members=lambda x: x.get("members", default_members)
+    ).assign(
+        members_str=lambda x: ", ".join(x["members"][:-1]) + " or " + x["members"][-1]
+    ) | (
+        lambda x: route_prompt
+        | llm.with_structured_output(
+            schema=router_query_schema(x), method=method, include_raw=False
         )
     )
     return route_chain
