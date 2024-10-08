@@ -46,8 +46,9 @@ coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
-.pytest_cache/
 cover/
+.pytest_cache/
+.ruff_cache/
 
 # Sphinx documentation
 docs/_build/
@@ -117,5 +118,4 @@ vector_data/
 chinook.db
 /*.png
 /*.json
-/*.yaml
 /notes/
