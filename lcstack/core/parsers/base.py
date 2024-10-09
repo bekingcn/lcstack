@@ -154,7 +154,7 @@ def default_output_parser_args_with_type_dict(_type: OutputParserType) -> Dict:
 class BaseOutputParser:
     """Base class for an output parser."""
 
-    def __init__(self, **kwargs: Any) -> Any:
+    def __init__(self, **kwargs: Any):
         """Initialize the output parser."""
 
         # strict mode
@@ -162,7 +162,9 @@ class BaseOutputParser:
 
     def _message_to_str(self, message: BaseMessage) -> str:
         """Convert a message to a string."""
-        return message.content
+        if isinstance(message.content, str):
+            return message.content
+        return "\n".join([str(c) for c in message.content])
 
     def _messages_to_str(self, messages: List[BaseMessage], index: int) -> str:
         """Convert a list of messages to a string."""
@@ -206,7 +208,7 @@ class BaseOutputParser:
     def _dict_to_dict(
         self,
         message: Dict,
-        struct_mapping: Dict[str, str | Dict | "NamedMappingParserArgs"] = None,
+        struct_mapping: Dict[Optional[str], str | Dict | "NamedMappingParserArgs"],
     ) -> Dict[str, Any]:
         """Convert a dictionary to a dictionary.
 
@@ -294,12 +296,12 @@ class BaseOutputParser:
         raise NotImplementedError("list to dict not implemented")
         # return {key: "\n".join(messages)}
 
-    def _primitive_to_dict(self, message: str, key: str) -> Dict[str, Any]:
+    def _primitive_to_dict(self, message: Union[str, int, float, bool], key: str) -> Dict[str, Any]:
         """Convert a string to a dictionary."""
         return {key: message}
 
     def _to_message(
-        self, message: any, type: str, name: str | None = None
+        self, message: str, type: str, name: str | None = None
     ) -> BaseMessage:
         """Convert a primitive type to a message."""
         if type == "ai":
@@ -314,7 +316,7 @@ class BaseOutputParser:
             raise ValueError(f"Unsupported message type: {type}")
 
     def _primitive_to_message(
-        self, message: any, type: str, name: str | None = None
+        self, message: Any, type: str, name: str | None = None
     ) -> BaseMessage:
         """Convert a string to a message."""
         return self._to_message(str(message), type, name)
@@ -374,7 +376,7 @@ class BaseOutputParser:
             return messages[index]
 
     def _primitive_to_messages(
-        self, message: any, type: str, name: str | None = None
+        self, message: Any, type: str, name: str | None = None
     ) -> List[BaseMessage]:
         """Convert a string to a list of messages."""
         return [self._to_message(message, type, name)]
@@ -383,7 +385,7 @@ class BaseOutputParser:
         self, message: Dict[str, Any], type: str, name: str | None = None
     ) -> List[BaseMessage]:
         """Convert a dictionary to a list of messages."""
-        return [self._dict_to_message(message, type, name)]
+        return [self._dict_to_message(message, "content", type, name)]
 
     def _list_to_messages(self, messages: List[str]) -> List[BaseMessage]:
         """Convert a list of strings to a list of messages."""
@@ -397,7 +399,7 @@ class BaseOutputParser:
         self,
         messages: List[BaseMessage],
         messages_slicing: MessagesSlicingMethod,
-        messages_slicing_args: Tuple[int, int],
+        messages_slicing_args: Optional[Tuple[int, int]],
     ) -> List[BaseMessage]:
         """Convert a list of messages to a list of messages."""
         if not messages_slicing or messages_slicing == MessagesSlicingMethod.all:
@@ -443,7 +445,7 @@ class PrimitiveOutputParser(BaseOutputParser):
     """Parse the output as a primitive type."""
 
     def __init__(
-        self, strict: bool, default_key: str = None, separator: str = "\n"
+        self, strict: bool, default_key: str, separator: str = "\n"
     ) -> None:
         super().__init__(strict=strict)
         self.default_key = default_key
@@ -483,7 +485,7 @@ class StructOutputParser(BaseOutputParser):
     def __init__(
         self,
         strict: bool,
-        struct_mapping: Dict[str, str],
+        struct_mapping: Dict[Optional[str], Union[str, Dict, "NamedMappingParserArgs"]],
         message_key: str,
         messages_key: str,
     ) -> None:
@@ -553,7 +555,7 @@ class MessageOutputParser(BaseOutputParser):
     """Parse the output as a message type."""
 
     def __init__(
-        self, strict: bool, default_role: str, default_name: str, index: int
+        self, strict: bool, default_role: str, default_name: str | None, index: int
     ) -> None:
         super().__init__(strict=strict)
         self.default_role = default_role
@@ -583,7 +585,7 @@ class MessageOutputParser(BaseOutputParser):
         elif isinstance(output, List):
             return self._list_to_message(output, self.default_role, self.default_name)
         elif isinstance(output, Dict):
-            return self._dict_to_message(output, self.default_role, self.default_name)
+            return self._dict_to_message(output, "content", self.default_role, self.default_name)
         elif (
             isinstance(output, str)
             or isinstance(output, int)
@@ -606,9 +608,9 @@ class MessagesOutputParser(BaseOutputParser):
         self,
         strict: bool,
         default_role: str,
-        default_name: str,
-        messages_slicing: Optional[MessagesSlicingMethod],
-        messages_slicing_args: Optional[Tuple[int, int]],
+        default_name: str | None,
+        messages_slicing: MessagesSlicingMethod,
+        messages_slicing_args: Optional[Tuple[int, int]] = None,
     ) -> None:
         super().__init__(strict=strict)
         self.default_role = default_role
@@ -666,7 +668,7 @@ def parse_data_with_type(
     message_role: Optional[str] = "ai",
     message_name: Optional[str] = None,
     struct_mapping: Optional[
-        Dict[Optional[str], Union[str, "NamedMappingParserArgs"]]
+        Dict[Optional[str], Union[str, Dict, "NamedMappingParserArgs"]]
     ] = None,
     messages_slicing: Optional[MessagesSlicingMethod] = None,
     messages_slicing_args: Optional[Tuple[int, int]] = None,
@@ -722,19 +724,19 @@ def parse_data_with_type(
             raise ValueError(err)
 
     if output_type == DataType.primitive:
-        return PrimitiveOutputParser(strict=strict).parse(data)
+        return PrimitiveOutputParser(strict=strict, default_key=message_key or DEFAULT_KEY_NAME).parse(data)
     elif output_type == DataType.struct:
         struct_mapping = struct_mapping or {}
         return StructOutputParser(
-            struct_mapping=struct_mapping,
-            message_key=message_key,
-            messages_key=messages_key,
+            struct_mapping=struct_mapping or {},
+            message_key=message_key or DEFAULT_KEY_NAME,
+            messages_key=messages_key or DEFAULT_MESSAGES_KEY,
             strict=strict,
         ).parse(data)
     elif output_type == DataType.message:
         # TODO: it's better to pass the name of graph node as message name
         return MessageOutputParser(
-            default_role=message_role,
+            default_role=message_role or "ai",
             default_name=message_name,
             index=DEFAULT_VALUE_LAST_MESSAGE,
             strict=strict,
@@ -747,10 +749,9 @@ def parse_data_with_type(
             elif message_index == DEFAULT_VALUE_LAST_MESSAGE:
                 messages_slicing = MessagesSlicingMethod.last
             else:
-                messages_slicing = MessagesSlicingMethod.range
-                messages_slicing_args = (message_index, message_index)
+                messages_slicing = MessagesSlicingMethod.range if messages_slicing_args else MessagesSlicingMethod.all
         return MessagesOutputParser(
-            default_role=message_role,
+            default_role=message_role or "ai",
             default_name=message_name,
             messages_slicing=messages_slicing,
             messages_slicing_args=messages_slicing_args,
@@ -841,7 +842,7 @@ def parse_data_with_struct_mapping(
                 ret[k] = data
         return ret
     return parse_data_with_type(
-        data, OutputParserType.struct, struct_mapping=struct_mapping
+        data, OutputParserType.struct, struct_mapping=struct_mapping # type: ignore
     )
 
 
@@ -855,7 +856,7 @@ def rebuild_struct_mapping(
 ) -> Union[MappingParserArgs, Dict[Optional[str], NamedMappingParserArgs]]:
     # rebuild output_mapping
     if isinstance(struct_mapping, str):
-        ret = {
+        return {
             None: NamedMappingParserArgs(
                 name=struct_mapping, output_type=OutputParserType.pass_through
             )
@@ -863,25 +864,25 @@ def rebuild_struct_mapping(
     elif isinstance(struct_mapping, MappingParserArgs):
         # keep this structure
         # NOTE: not reached here because it's not recongnized by pydantic for MappingParserArgs :(
-        ret = struct_mapping
+        return struct_mapping
+    elif len(struct_mapping) == 0:
+        return {}
     else:
         # TODO: better way? with this, `output_type` should not be used by user in config
         # convert to MappingParserArgs forcely if possible because of failure above
-        parsed = False
         if check_args and "output_type" in struct_mapping:
             try:
-                ret = MappingParserArgs(**struct_mapping)
-                parsed = True
+                ret = MappingParserArgs(**struct_mapping) # type: ignore
+                return ret
             except Exception:
                 pass
-        if not parsed:
-            output_mapping = {}
-            for k, v in struct_mapping.items():
-                if v is None or isinstance(v, str):
-                    output_mapping[k] = NamedMappingParserArgs(
-                        name=v, output_type=OutputParserType.pass_through
-                    )
-                else:
-                    output_mapping[k] = v
-            ret = output_mapping
+        output_mapping: Dict[Optional[str], NamedMappingParserArgs] = {}
+        for k, v in struct_mapping.items():
+            if v is None or isinstance(v, str):
+                output_mapping[k] = NamedMappingParserArgs(
+                    name=v, output_type=OutputParserType.pass_through
+                )
+            else:
+                output_mapping[k] = v
+        ret = output_mapping
     return ret

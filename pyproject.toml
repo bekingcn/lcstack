@@ -55,7 +55,6 @@ exclude = [
     "**/tests/**",
 ]
 pythonVersion = "3.10"
-typeCheckingMode = "strict"
 reportMissingImports = "warning"
 reportUnknownLambdaType = "warning"
 typeCheckingMode = "standard"  # TODO: using strict mode

@@ -1,3 +1,6 @@
+from typing import List
+
+
 def create_vectorstore(
     provider: str, tag: str = "vectorstore", delete_existing: bool = False, **kwargs
 ):
@@ -30,7 +33,13 @@ def create_vectorstore(
             )
             # have to embed a test document before initializing index
             embedding = kwargs.get("embedding")
-            embeddings = embedding.embed_documents(["test"])
+            embeddings: List[List[float]] = []
+            if embedding is not None:
+                embeddings = embedding.embed_documents(["test"])
+            else:
+                raise ValueError(
+                    "An embedding must be provided to initialize FAISS index."
+                )
             if distance_strategy == DistanceStrategy.MAX_INNER_PRODUCT:
                 index = faiss.IndexFlatIP(len(embeddings[0]))
             else:
