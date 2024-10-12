@@ -1,5 +1,8 @@
-from typing import List
+from typing import List, Dict, Tuple, Callable
+from langchain_core.vectorstores import VectorStore
 
+
+SUPPORTED_VECTORSTORES = Dict[Tuple[str, str], Callable[..., VectorStore]]
 
 def create_vectorstore(
     provider: str, tag: str = "vectorstore", delete_existing: bool = False, **kwargs
@@ -53,5 +56,21 @@ def create_vectorstore(
             # TODO: Implement delete
             pass
         return db
+    elif SUPPORTED_VECTORSTORES.get((provider, tag)) is not None:
+        vectorstore_callable = SUPPORTED_VECTORSTORES.get((provider, tag))
+        if not isinstance(vectorstore_callable, Callable):
+            raise ValueError(
+                f"Vectorstore provider `{provider}` with tag `{tag}` does not return an Callable, which returns an instance of VectorStore"
+            )
+        if delete_existing:
+            kwargs["delete_existing"] = True
+        vectorstore = vectorstore_callable(**kwargs)
+        if not isinstance(vectorstore, VectorStore):
+            raise ValueError(
+                f"Vectorstore provider `{provider}` with tag `{tag}` does not return an instance of VectorStore"
+            )
+        return vectorstore
     else:
-        raise NotImplementedError(f"Vectorstore Provider {provider} not supported yet.")
+        raise NotImplementedError(
+            f"Vectorstore Provider {provider} not supported yet."
+            " You can add it to the lcstack.components.vectorstores.base.SUPPORTED_VECTORSTORES manually")

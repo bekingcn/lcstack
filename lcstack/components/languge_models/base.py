@@ -1,10 +1,11 @@
-from typing import List, Literal
+from typing import List, Dict, Tuple, Literal
 
 from langchain_core.language_models import BaseLanguageModel, BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
 
+SUPPORTED_LANGUAGE_MODELS = Dict[Tuple[str, str], BaseLanguageModel]
 
 def create_llm(
     provider: str,
@@ -41,8 +42,16 @@ def create_llm(
         from langchain_google_genai.chat_models import ChatGoogleGenerativeAI
 
         lang_model_class = ChatGoogleGenerativeAI
+    elif SUPPORTED_LANGUAGE_MODELS.get((provider, tag)) is not None:
+        lang_model_class = SUPPORTED_LANGUAGE_MODELS.get((provider, tag))
+        if not issubclass(lang_model_class, BaseLanguageModel):
+            raise ValueError(
+                f"Language Model Provider `{provider}` with tag `{tag}` does not return an subclass of BaseLanguageModel"
+            )
     else:
-        raise NotImplementedError("Language Model Provider not supported yet.")
+        raise NotImplementedError(
+            f"Language Model Provider `{provider}` with tag `{tag}` not supported yet."
+            " You can add it to the lcstack.components.languge_models.base.SUPPORTED_LANGUAGE_MODELS manually.")
 
     llm = lang_model_class(**kwargs)
     if tools:

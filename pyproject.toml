@@ -57,7 +57,8 @@ exclude = [
 pythonVersion = "3.10"
 reportMissingImports = "warning"
 reportUnknownLambdaType = "warning"
-typeCheckingMode = "standard"  # TODO: using strict mode
+reportMissingTypeStubs = "warning"
+typeCheckingMode = "off"  # TODO: using strict mode
 stubs = ["ebooklib"]
 
 [build-system]

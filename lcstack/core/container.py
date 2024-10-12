@@ -84,7 +84,7 @@ class BaseContainer:
         )
 
     @abstractmethod
-    def invoke(self, input: Any, config: Optional[RunnableConfig] = None):
+    def invoke(self, inputs: Any, config: Optional[RunnableConfig] = None):
         """
         Invoke the component
 
@@ -95,7 +95,7 @@ class BaseContainer:
 
 
 class NoneRunnableContainer(BaseContainer):
-    def invoke(self, input: Any, config: Optional[RunnableConfig] = None):
+    def invoke(self, inputs: Any, config: Optional[RunnableConfig] = None):
         # Could be: DocumentLoader, DocumentTransformer, VectorDB, Embeddings, ChatMessageHistory
         raise NotImplementedError(
             f"{type(self.internal)} from {self.component_name}: cannot be invoked directly in NoneRunnableContainer"
@@ -302,7 +302,7 @@ class RunnableContainer(BaseContainer):
                 )
             if _runnable is not runnable:
                 _runnable = _runnable.with_config(
-                    {"name": "wrapped_runnable", "description": "wrapped runnable"}
+                    name="wrapped_runnable", description="wrapped runnable"
                 )
         return _runnable
 
