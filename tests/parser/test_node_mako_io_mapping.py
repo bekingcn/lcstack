@@ -17,7 +17,7 @@ def make_node_with_mapping(input_expr: str = "", output_expr: str = ""):
         }
     }
     root = RootInitializer.from_config(config)
-    return root.get_ref_initializer("pt_node").build("pt_node").build_original()
+    return root.get_ref_initializer("pt_node").build("pt_node").build()
 
 
 def test_pass_through():

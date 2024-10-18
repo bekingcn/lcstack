@@ -227,7 +227,7 @@ class Client:
             "callbacks": callbacks,
         }  # {"max_iterations": 100, "session_id": session_id, "thread_id": session_id}
         if self.stream:
-            runnable = app.build_original()
+            runnable = app.build()
             response = {}
             run_config["configurable"] = {"stream_mode": "values"}
             for chunk in runnable.stream(inputs, run_config):

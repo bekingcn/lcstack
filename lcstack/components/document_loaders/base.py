@@ -58,9 +58,9 @@ LOADER_MAPPING: Dict[str, Tuple[Type[BaseLoader], Dict[str, Any]]] = {
 
 class GenericDocumentLoader(BaseLoader):
     def __init__(self, file_path: str, extensions: list[str] = [], **kwargs: Any):
-        self.kwargs = kwargs
         self.file_path = file_path
         self.extensions = extensions
+        self.kwargs = kwargs
 
     def load(self) -> List[Document]:
         import os
@@ -80,6 +80,7 @@ class GenericDocumentLoader(BaseLoader):
                 continue
             if ext in LOADER_MAPPING:
                 loader_class, loader_args = LOADER_MAPPING[ext]
+                loader_args = {**loader_args, **self.kwargs}
                 loader = loader_class(file_path, **loader_args) # type: ignore
                 new_documents = loader.load()
                 # for doc in new_documents:
@@ -94,47 +95,65 @@ class GenericDocumentLoader(BaseLoader):
     def add_loader(cls, extension: str, loader_class: Type[BaseLoader], **kwargs: Any):
         LOADER_MAPPING[extension] = (loader_class, kwargs or {})
 
+def _import_class(loader_class: str, default_module: str | None = None) -> Type[Any] | None:
+    import importlib
 
-def create_typed_document_loader_chain(
-    loader_class: Type[BaseLoader] | str,
-    text_splitter: TextSplitter | None=None,
-) -> Runnable[Dict[str, Any], List[Document]]:  # type: ignore
-    _loader_class = None
-    if isinstance(loader_class, str):
-        # import a type from a string
-        import importlib
+    if not default_module:
         _loader_class = getattr(
-            importlib.import_module("langchain_community.document_loaders"),
+            importlib.import_module(default_module),
             loader_class,
             None,
         )
-        if not _loader_class:
-            parts = loader_class.rsplit(".", 1)
-            if len(parts) == 2:
-                module, cls = parts
-                _loader_class = getattr(importlib.import_module(module), cls, None)
-            else:
-                _loader_class = globals().get(loader_class, None)
+    if not _loader_class:
+        parts = loader_class.rsplit(".", 1)
+        if len(parts) == 2:
+            module, cls = parts
+            _loader_class = getattr(importlib.import_module(module), cls, None)
+        else:
+            _loader_class = globals().get(loader_class, None)
+
+    return _loader_class
+
+def _get_loader_class(loader_class: str) -> Type[BaseLoader]:
+    _loader_class = _import_class(loader_class, default_module="langchain_community.document_loaders")
     if not _loader_class:
         raise ValueError(f"Unknown document loader: {loader_class}")
     if not issubclass(_loader_class, BaseLoader):
         raise ValueError(
             f"Document loader {_loader_class} is not a subclass of BaseLoader"
         )
-    return RunnablePassthrough.assign() | (
-        lambda x: text_splitter.split_documents(_loader_class(**x).load())
-        if text_splitter
-        else _loader_class(**x).load()
-    )
+    return _loader_class
+
+def create_typed_document_loader(
+    loader_class: Type[BaseLoader] | str,
+    **kwargs: Any,
+) -> BaseLoader:
+    _loader_class = _get_loader_class(loader_class) if isinstance(loader_class, str) else loader_class
+    return _loader_class(**kwargs)
+
+def create_document_loader(
+    **kwargs: Any,
+) -> BaseLoader:
+    return create_typed_document_loader(GenericDocumentLoader, **kwargs)
+
+def create_typed_document_loader_chain(
+    loader_class: Type[BaseLoader] | str,
+    text_splitter: TextSplitter | None=None,
+    loader_kwargs: Dict[str, Any] = {},
+) -> Runnable[Dict[str, Any], List[Document]]:
+    _loader_class = _get_loader_class(loader_class) if isinstance(loader_class, str) else loader_class
+    
+    def load(
+        x: Dict[str, Any]
+    ) -> List[Document]:
+        if text_splitter:
+            return text_splitter.split_documents(_loader_class(**x).load())
+        return _loader_class(**x).load()
+    
+    return RunnablePassthrough.assign(**loader_kwargs) | load
 
 
 def create_document_loader_chain(
     text_splitter: TextSplitter | None=None,
 ) -> Runnable[Dict[str, Any], List[Document]]:
     return create_typed_document_loader_chain(GenericDocumentLoader, text_splitter)
-    # return (
-    #     RunnablePassthrough.assign(**kwargs)
-    #     | (
-    #         lambda x: GenericDocumentLoader(file_path=x["file_path"], extensions=x.get("extensions", None), **kwargs).load()
-    #     )
-    # )

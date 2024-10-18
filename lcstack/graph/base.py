@@ -511,7 +511,7 @@ class Workflow:
         # elif isinstance(v.agent, AgentConfig):    # not reachable
         #     callable = AgentInvoker(node_name=node_name, agent_config=v.agent).runnable
         elif isinstance(v.agent, RunnableContainer):
-            callable = v.agent.build_original()
+            callable = v.agent.build()
         else:
             raise ValueError(
                 f"Unsupported agent type `{type(v.agent)}` in callable vertex `{v.name}`"

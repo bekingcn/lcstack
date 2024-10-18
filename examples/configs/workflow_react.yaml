@@ -7,6 +7,8 @@ tool_node:
     tools:
       - '{{ tavily_search }}'
 
+# TODO: diffrence between llm and llm node (whose input/output is mapped to dict)
+#   also for prompt and prompt node (whose input/output is mapped to dict instead of prompt value)
 llm_with_tools:
   initializer: llm
   data:
@@ -24,6 +26,8 @@ workflow_react:
       name: ReactWorkflow
       input_mapping:
         messages: query
+      # TODO: schemaless, from nodes' output/input mapping
+      #   this requires to get the nodes' output and input types
       schema:
       - name: messages  # schema field name
         field_type: messages
@@ -40,6 +44,9 @@ workflow_react:
       - name: llm_node
         agent: '{{ llm_with_tools }}'
         next: branch_0
+        # TODO: without schema, input/output mapping should be defined here
+        #   for example: input_1: node_a.output_1. how to map `messages` whose type is addable list?
+        #   and there are hidden type conversions like: `str` -> `messages`, `messages` -> `str` ...
         input_mapping: messages  # pop `messages` from schema
         output_mapping:
           messages: # output  # map llm output to `messages`

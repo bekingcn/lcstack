@@ -42,7 +42,7 @@ def make_node_with_mapping(
         },
     }
     root = LcStack.from_config(config)
-    runnable = root.get_ref_initializer("wf_node").build("wf_node").build_original()
+    runnable = root.get_ref_initializer("wf_node").build("wf_node").build()
     # save a image
     # open("test_wf_mako_in_branchs.png", "wb").write(runnable.get_graph().draw_mermaid_png())
     return runnable

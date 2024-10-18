@@ -10,27 +10,30 @@ from lcstack.core.parsers.base import (
     default_output_parser_args_with_type,
 )
 
-from .components.prompts import load_prompt
+from .components.prompts import load_prompt, create_prompt_node
 from .components.tools import create_tool_scrape_webpages
-from .components.retrievers import load_vectorstore_retriever
+from .components.retrievers import load_vectorstore_retriever, create_history_aware_retriever
 from .components.document_loaders import (
     create_document_loader_chain,
     create_typed_document_loader_chain,
 )
 from .components.chat_history import create_chat_history
 from .components.indexing import create_indexing_chain
-from .components.languge_models import create_llm
+from .components.languge_models import create_llm, create_llm_node
 from .components.embeddings import create_embeddings
 from .components.vectorstores import create_vectorstore
 from .components.text_splitters import create_default_text_splitter
 from .components.chains import (
     load_document_qa_chain,
     load_llm_requests_chain,
-    load_retrieval_chain,
+    load_retrieval_chain,       # retrieval chain with llm
     load_retrieval_qa_with_sources_chain,
+    load_conversational_retrieval_chain,
+    load_qa_chain,
     create_llm_chain,
     create_router_chain,
     create_sql_query_chain,
+    create_retrieval_chain,     # high level retrieval chain
 )
 from .components.agents import (
     create_hierarchical_team,
@@ -98,9 +101,6 @@ register_component(
         func_or_class=create_data_parser,
         params={},
         component_type=ComponentType.DataConverter,
-        default_output_parser_args=default_output_parser_args_with_type(
-            OutputParserType.pass_through
-        ),
     ),
 )
 
@@ -126,10 +126,6 @@ register_component(
         description="LLM/Chat Model",
         func_or_class=create_llm,
         params={},
-        # this is default value, not neccesary
-        default_output_parser_args=default_output_parser_args_with_type(
-            OutputParserType.pass_through
-        ),
         component_type=ComponentType.LLM,
     ),
 )
@@ -145,8 +141,30 @@ register_component(
     ),
 )
 
+register_component(
+    "llm_node",
+    LcComponent(
+        name="llm_node",
+        description="LLM/Chat Model as a node",
+        func_or_class=create_llm_node,
+        params={},
+        component_type=ComponentType.Chain,
+    ),
+)
+
+register_component(
+    "prompt_node",
+    LcComponent(
+        name="prompt_node",
+        description="Prompt as a node",
+        func_or_class=create_prompt_node,
+        params={},
+        component_type=ComponentType.Chain,
+    ),
+)
+
 # inputs: according to the prompt template
-# outputs: str
+# outputs: {"text": "..."}
 register_component(
     "llm_chain",
     LcComponent(
@@ -155,9 +173,6 @@ register_component(
         func_or_class=LLMChain,
         params={},
         component_type=ComponentType.Chain,
-        default_output_parser_args=MappingParserArgs(
-            output_type=OutputParserType.struct, message_key="output"
-        ),
     ),
 )
 
@@ -171,10 +186,6 @@ register_component(
         func_or_class=create_llm_chain,
         params={},  # str
         component_type=ComponentType.Chain,
-        # change the output from str to dict
-        default_output_parser_args=MappingParserArgs(
-            output_type=OutputParserType.struct, message_key="output"
-        ),
     ),
 )
 
@@ -192,8 +203,8 @@ register_component(
     ),
 )
 
-# inputs: question
-# outputs: dict, answer -> output
+# inputs: question: ...
+# outputs: dict, answer
 register_component(
     "retrieval_chain",
     LcComponent(
@@ -201,16 +212,27 @@ register_component(
         description="Retrieval Chain",
         func_or_class=load_retrieval_chain,
         params={},
-        inputs=["question", "search_kwargs"],
-        # re-map the output from dict to dict
-        default_output_parser_args=MappingParserArgs(
-            output_type=OutputParserType.struct, struct_mapping={"output": "answer"}
-        ),
+        inputs=["input", "search_kwargs"],
         component_type=ComponentType.Chain,
     ),
 )
 
-# inputs: question
+# inputs: question: ...
+# outputs: dict, answer
+register_component(
+    "retrieval_chain_high_level",
+    LcComponent(
+        name="retrieval_chain_high_level",
+        description="High Level Retrieval Chain",
+        func_or_class=create_retrieval_chain,
+        params={},
+        inputs=["input"],
+        component_type=ComponentType.Chain,
+    ),
+)
+
+# deprecated, to be removed
+# inputs: question: ...
 # outputs: dict, answer -> output, sources
 register_component(
     INITIALIZER_NAME_RETRIEVAL_QA_WITH_SOURCES_CHAIN,
@@ -219,17 +241,7 @@ register_component(
         description="Retrieval QA With Sources Chain",
         func_or_class=load_retrieval_qa_with_sources_chain,
         params={},
-        inputs=["question"],
         component_type=ComponentType.Chain,
-        # re-map the output from dict to dict
-        default_output_parser_args=MappingParserArgs(
-            output_type=OutputParserType.struct,
-            # desired output: `output`, from `answer`
-            struct_mapping={
-                "output": "answer",
-                "sources": "sources",
-            },
-        ),
     ),
 )
 
@@ -242,21 +254,12 @@ register_component(
         description="Document QA Chain",
         func_or_class=load_document_qa_chain,
         params={},
-        # here use `query` as inputs instead of `question`
-        inputs={"question": "query", "file_path": "file_path"},
         component_type=ComponentType.Chain,
-        default_output_parser_args=MappingParserArgs(
-            output_type=OutputParserType.struct,
-            # desired output: `output`, from `answer`
-            struct_mapping={
-                "output": "answer",
-            },
-        ),
     ),
 )
 
 # inputs: question, table_names_to_use (optional, list[str])
-# outputs: str -> dict
+# outputs: sql: ...
 register_component(
     "sql_query_chain",
     LcComponent(
@@ -266,11 +269,6 @@ register_component(
         params={},
         inputs=["question", "table_names_to_use"],
         component_type=ComponentType.Chain,
-        default_output_parser_args=MappingParserArgs(
-            output_type=OutputParserType.struct,
-            # desired output: `output`, from plain text
-            message_key="output",
-        ),
     ),
 )
 
@@ -478,7 +476,7 @@ register_component(
         params={},
         # not check inputs and outputs for now
         inputs=["file_path", "extensions"],
-        component_type=ComponentType.DocumentLoader,
+        component_type=ComponentType.Chain,
     ),
 )
 
@@ -493,7 +491,7 @@ register_component(
         params={},
         # not check inputs and outputs for now
         inputs=["file_path", "extensions"],  # same as document loader class
-        component_type=ComponentType.DocumentLoader,
+        component_type=ComponentType.Chain,
     ),
 )
 
@@ -536,6 +534,18 @@ register_component(
         name=INITIALIZER_NAME_RETRIEVER,
         description="Retriever",
         func_or_class=load_vectorstore_retriever,
+        params={},
+        inputs=[],
+        component_type=ComponentType.Retriever,
+    ),
+)
+
+register_component(
+    "history_aware_retriever",
+    LcComponent(
+        name="history_aware_retriever",
+        description="History Aware Retriever",
+        func_or_class=create_history_aware_retriever,
         params={},
         inputs=[],
         component_type=ComponentType.Retriever,

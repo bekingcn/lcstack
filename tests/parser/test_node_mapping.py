@@ -15,7 +15,7 @@ def make_node_with_mapping(input_mapping: dict = {}, output_mapping: dict = {}):
         }
     }
     root = RootInitializer.from_config(config)
-    return root.get_ref_initializer("pt_node").build("pt_node").build_original()
+    return root.get_ref_initializer("pt_node").build("pt_node").build()
 
 
 def test_is_runnable():

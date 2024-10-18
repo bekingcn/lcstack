@@ -11,3 +11,27 @@ openai_llm:
 
 # or reference from settings (settings.yaml)
 openai_chat: !SET ${templates.llm_openai_chat}
+
+prompt:
+  initializer: prompt
+  data:
+    template: '{question}'
+
+prompt_node:
+  initializer: prompt_node
+  data:
+    template: '{{ prompt }}'
+    output_key: messages
+
+openai_chat_node:
+  initializer: llm_node
+  data:
+    provider: openai
+    tag: chat
+    model: gpt-3.5-turbo
+    temperature: 0.7
+    api_key: !ENV ${OPENAI_API_KEY}
+    base_url: !ENV ${OPENAI_API_BASE}
+    input_key: messages
+    output_key: messages
+    output_type: messages

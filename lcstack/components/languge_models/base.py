@@ -70,3 +70,35 @@ def create_llm(
             )
 
     return llm
+
+from langchain_core.utils import xor_args
+from ..utils import keyed_value_runnable, dekey_value_runnable
+from ..output_parser import create_output_parser, SUPPORTED_OUTPUT_PARSERS
+
+@xor_args(("llm", "provider"))
+def create_llm_node(
+        llm: BaseLanguageModel | None = None, 
+        provider: str | None = None, 
+        tag: str = "chat",
+        tools: List[BaseTool] | ToolNode | None = None,
+        tool_choice: dict | str | Literal["auto", "any", "none"] | bool | None = None,
+        input_key: str = "messages", 
+        output_key: str = "output", 
+        output_type: str = "str",
+        **kwargs
+    ):
+    if llm is None:
+        llm = create_llm(provider, tag=tag, tools=tools, tool_choice=tool_choice, **kwargs)
+    if output_type in SUPPORTED_OUTPUT_PARSERS:
+        post_parser = create_output_parser(type=output_type, output_key=output_key)
+    elif output_type == "message":
+        post_parser = keyed_value_runnable(key=output_key)
+    elif output_type == "messages":
+        # TODO: improve this
+        post_parser = (lambda x: [x]) | keyed_value_runnable(key=output_key)
+    else:
+        raise ValueError(f"Invalid output type: {output_type}")
+
+    
+    return (dekey_value_runnable(key=input_key) | llm | post_parser).with_config(name="llm_node")
+

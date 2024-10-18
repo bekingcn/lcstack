@@ -20,6 +20,12 @@ prompt_from_messages:
       - user
       - '{question}'
 
+llm_chain_v0:
+  initializer: llm_chain
+  data:
+    llm: '{{ llm }}'
+    prompt: '{{ prompt }}'
+
 llm_chain:
   initializer: llm_chain_lcel
   data:

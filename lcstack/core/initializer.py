@@ -211,6 +211,8 @@ class BaseInitializer(BaseModel):
 
     def build(self, name: str, **kwargs) -> BaseContainer:
         """
+        build the containers as a factory method according to the component type
+
         Args:
             name (str): TODO: the name of the in the workflow or runtime
             kwargs (dict): the extra kwargs to create lc component
@@ -224,10 +226,11 @@ class BaseInitializer(BaseModel):
         new_kwargs = self.parsed_kwargs.copy()
         new_kwargs.update(kwargs)
 
-        # inst = self.func_or_class(**kwargs)
+        # build the container as a factory
         if self.component.component_type in NonRunnables:
             return NoneRunnableContainer(name, self.component, new_kwargs, shared=False)
         else:
+            # TODO: differentiate among LLMs, PromptTemplates and ChainableRunnables (Workflows)
             return RunnableContainer(
                 name,
                 self.component,

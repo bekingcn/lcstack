@@ -38,7 +38,7 @@ def make_node_with_mapping(
         },
     }
     root = RootInitializer.from_config(config)
-    return root.get_ref_initializer("wf_node").build("wf_node").build_original()
+    return root.get_ref_initializer("wf_node").build("wf_node").build()
 
 
 config = {"thread_id": "wf_node_mapping_123"}

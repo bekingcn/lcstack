@@ -43,12 +43,15 @@ LanguageModels = [
     ComponentType.ChatModel,
 ]
 
+PromptTemplates = [
+    ComponentType.PromptTemplate
+]
+
 ChainableRunnables = [
     ComponentType.Chain,
     ComponentType.StateGraph,
     ComponentType.MessageGraph,
     ComponentType.Retriever,
-    ComponentType.PromptTemplate,
     ComponentType.DataConverter,
     ComponentType.Tool,
     ComponentType.ToolNode,
