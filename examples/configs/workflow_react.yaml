@@ -6,14 +6,27 @@ tool_node:
   data:
     tools:
       - '{{ tavily_search }}'
+  
+prompt:
+  initializer: prompt_node
+  data:
+    template: 
+      -
+        - system
+        - you are a helpful assistant, chat with a human with below history.
+      -
+        - human
+        - '{query}'
 
 # TODO: diffrence between llm and llm node (whose input/output is mapped to dict)
 #   also for prompt and prompt node (whose input/output is mapped to dict instead of prompt value)
 llm_with_tools:
-  initializer: llm
+  initializer: llm_node
   data:
     provider: ollama
     tag: chat
+    output_type: messages
+    output_key: messages
     tools: '{{ tool_node }}'
     model: llama3.2 # qwen2.5
     temperature: 0.3
@@ -24,8 +37,8 @@ workflow_react:
   data:
     inline:
       name: ReactWorkflow
-      input_mapping:
-        messages: query
+      # input_mapping:
+      #   query: query
       # TODO: schemaless, from nodes' output/input mapping
       #   this requires to get the nodes' output and input types
       schema:
@@ -33,6 +46,9 @@ workflow_react:
         field_type: messages
         default: []
         operator: add
+        # required: true
+      - name: query  # schema field name
+        field_type: str
         required: true
       - name: is_last_step  # schema field name
         field_type: bool
@@ -41,16 +57,19 @@ workflow_react:
         field_type: str
         required: false
       vertices:
+      - name: prompt_node     # if using prompt node, better to parse the query instead of using `messages` from schema
+        agent: '{{ prompt }}'
+        next: llm_node
       - name: llm_node
         agent: '{{ llm_with_tools }}'
         next: branch_0
         # TODO: without schema, input/output mapping should be defined here
         #   for example: input_1: node_a.output_1. how to map `messages` whose type is addable list?
         #   and there are hidden type conversions like: `str` -> `messages`, `messages` -> `str` ...
-        input_mapping: messages  # pop `messages` from schema
+        # input_mapping: messages  # pop `messages` from schema
         output_mapping:
-          messages: # output  # map llm output to `messages`
-          output: # output    # map llm output to `output`
+          messages: messages # output  # map llm output to `messages`
+          output: messages # output    # map llm output to `output`
       - name: branch_0
         default: __end__
         branchs:

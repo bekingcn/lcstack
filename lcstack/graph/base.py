@@ -371,17 +371,16 @@ class Workflow:
         if self.reset_state:
             warning(f"reset state in workflow `{self.name}` for thread `{thread_id}`")
             self.checkpoint.storage.clear()
-
-        required_keys = {self.input_mapping[f.name] for f in self.schema if f.required}
-
+        
         # try expression first
         if self.input_expr:
             eval_result = eval_expr(self.input_expr, inputs)
             if isinstance(eval_result, dict):
+                required_keys = {f.name for f in self.schema if f.required}
                 missing_keys = required_keys.difference(eval_result.keys())
                 if len(missing_keys) > 0:
                     raise ValueError(
-                        f"required fields {missing_keys} are missing in workflow {self.name}'s inputs mapping"
+                        f"required fields {missing_keys} are missing in workflow {self.name}'s inputs"
                     )
                 # add the default values
                 return {**self._default_dict, **eval_result}
@@ -390,20 +389,14 @@ class Workflow:
                     f"Expected expression result to be a dict, but invalid expression for workflow: {self.input_expr}"
                 )
 
-        # convert mapping to dict[str, str]
-        input_mapping = {
-            sn: inn.name if isinstance(inn, NamedMappingParserArgs) else inn
-            for sn, inn in self.input_mapping.items()
-        }
-        # all required fields should be in the inputs
-        try:
-            missing_keys = required_keys.difference(input_mapping.values())
-            if len(missing_keys) > 0:
-                raise ValueError(
-                    f"required fields {missing_keys} are missing in workflow {self.name}'s inputs mapping"
-                )
-        except KeyError:
-            raise ValueError("input mapping should include all required fields")
+        # if not in input mapping, treat it as pass-through
+        # so the input mapping could be empty, or not all required fields are in input mapping
+        required_keys = {self.input_mapping[f.name] if f.name in self.input_mapping else f.name for f in self.schema if f.required}
+        missing_keys = required_keys.difference(inputs.keys())
+        if len(missing_keys) > 0:
+            raise ValueError(
+                f"required fields {missing_keys} are missing in workflow {self.name}'s inputs"
+            )
 
         # re-build the output mapping first
         new_mapping: Dict[str, NamedMappingParserArgs] = {}
