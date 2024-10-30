@@ -1,7 +1,8 @@
 import logging
-from typing import Callable
+from typing import Any, Callable, Dict
 
 from langchain_core.runnables import Runnable
+from pydantic import Field
 
 from .core.models import InitializerConfig
 from .lcstack_builder import YamlBuilder
@@ -25,6 +26,16 @@ class LcStack(RootInitializer):
     @property
     def initializers(self):
         return self.children
+
+    def inject_objects(self, objects: Dict[str, Any]):
+        # TODO: this is a experimental feature for now, any better way to inject user objects? 
+        # for tools and other components which cannot be constructed from config
+        from .core.injected import InjectedObjInitializer
+        for name, obj in objects.items():
+            if name in self.initializer_config.children:
+                raise ValueError(f"Failed to inject object {name} due to duplicate name in the config")
+            self.children[name] = InjectedObjInitializer.from_obj(self, name, obj)
+        return self
 
     def get_initializer(self, name):
         return self.get_ref_initializer(name)
@@ -134,12 +145,17 @@ class LcStackBuilder(YamlBuilder):
 
 def _node_content(node: InitializerConfig):
     content = f"initializer: {node.initializer}"
-    comp = get_component(node.initializer)
     if node.data.kwargs and "provider" in node.data.kwargs:
         content += f"\nprovider: {node.data.kwargs['provider']}_{node.data.kwargs.get('tag', 'none')}"
-    elif isinstance(comp, Component):
-        cls_name = comp.func_or_class.__name__
-        content += f"\nname: {cls_name}"
     else:
-        raise ValueError(f"Unknown initializer: {node['initializer']}")
+        try:
+            comp = get_component(node.initializer)
+            if isinstance(comp, Component):
+                cls_name = comp.func_or_class.__name__
+                content += f"\ncreator: {cls_name}"
+        except ValueError:
+            if node.initializer == "injected":
+                content += f"\ncreator: injected"
+            else:
+                raise ValueError(f"Unknown initializer: {node.initializer}")
     return content
