@@ -22,7 +22,7 @@ def _try_parse_val(val):
         # if int, float, bool?
         if isinstance(parsed_val, (dict, list)):
             return parsed_val
-    except ValueError:
+    except:
         pass
     return val
 

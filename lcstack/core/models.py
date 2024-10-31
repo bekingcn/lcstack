@@ -12,6 +12,7 @@ from lcstack.core.parsers.base import (
 
 class ComponentType(str, enum.Enum):
     Unknown = "Unknown"
+    Injected = "Injected"
     # Langchain supported components
     Chain = "Chain"  # Chain or Runnable Sequence
     LLM = "LLM"  # TODO: remove
@@ -97,13 +98,16 @@ class InitializerDataConfig(BaseModel):
     )
     input_expr: Optional[str] = None
     output_expr: Optional[str] = None
+    history_input_key: Optional[str] = None
+    history_output_key: Optional[str] = None
 
     # arguments to be passed to func_or_class
+    # NOTE: `chat_history` should by handled during parsing stage
     kwargs: Optional[Dict[str, Any]] = {}
 
     def __init__(self, **data):
         super().__init__(**data)
-        for k in ["input_mapping", "output_mapping", "input_expr", "output_expr"]:
+        for k in ["input_mapping", "output_mapping", "input_expr", "output_expr", "history_input_key", "history_output_key"]:
             data.pop(k, None)
 
         self.kwargs.update(data)

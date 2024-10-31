@@ -10,8 +10,6 @@ llm_chain:
   data:
     llm: '{{ llm }}'
     prompt: '{{ prompt }}'
-    outputs:
-    - 'output'
 
 workflow_simple:
   initializer: conditional_graph

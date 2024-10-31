@@ -297,6 +297,16 @@ class Workflow:
                 }
             )
         )
+        # in case of `chat_history` is specified, add a `chat_history` field
+        fields.append(
+            FieldConfig(
+                **{
+                    "name": "chat_history",
+                    "field_type": SupportedDataType.messages,
+                    "default": [],
+                }
+            )
+        )
 
         # camel case the name
         model_name = f"{self.name}State"
@@ -308,6 +318,7 @@ class Workflow:
             for f in self.schema
         }
         self._default_dict[NAME_BRANCH_STEPS] = []
+        self._default_dict["chat_history"] = []
 
         return DynamicStateModel
 
@@ -321,10 +332,12 @@ class Workflow:
     def compile(self):
         self.build_graph()
 
-        # NOTE: here the checkpoint is used to keep the state each turn to enter the workflow
+        # TODO: we disabled the MemorySaver, shuold be passed in from config `checkpoint`?
+        # or chat_history is enough because we didi not support interactive chat in a workflow
+        # here the checkpoint is used to keep the state each turn to enter the workflow
         #   because we expect the state to be cleared after each turn
         #   If you hope to persist the state, the solution is to wrap another state saver, which sync the state from this checkpoint
-        self.checkpoint = MemorySaver()
+        # self.checkpoint = MemorySaver()
         workflow = self.graph.compile(checkpointer=self.checkpoint)
         return workflow
 
@@ -368,7 +381,7 @@ class Workflow:
         #   or, you should clear the state for specific thread manually
         thread_id = (config or {}).get("configurable", {}).get("thread_id", None)
 
-        if self.reset_state:
+        if self.reset_state and self.checkpoint and thread_id:
             warning(f"reset state in workflow `{self.name}` for thread `{thread_id}`")
             self.checkpoint.storage.clear()
         
@@ -498,12 +511,13 @@ class Workflow:
         return f"{self.name}_{name}"
 
     def _build_callable_node(self, v: CallableVertex):
+        from ..core.injected import InjectedObjContainer
         node_name = self._to_graph_node_name(v.name)
         if isinstance(v.agent, Callable):
             callable = v.agent
         # elif isinstance(v.agent, AgentConfig):    # not reachable
         #     callable = AgentInvoker(node_name=node_name, agent_config=v.agent).runnable
-        elif isinstance(v.agent, RunnableContainer):
+        elif isinstance(v.agent, (RunnableContainer, InjectedObjContainer)):
             callable = v.agent.build()
         else:
             raise ValueError(
@@ -523,6 +537,7 @@ class Workflow:
         return node_name, runnable
 
     def build_workflow(self):
+        # TODO: add _exit_graph for trimming unnecessary outputs and other post-processing
         return self._enter_graph | self.compile()
 
     # invoke and stream , which are called directly by the user
@@ -540,7 +555,7 @@ class Workflow:
         workflow = self.compile()
         config = config or {}
         config["thread_id"] = self._gen_thread_id()
-        runnable = self._enter_graph | workflow
+        runnable = self.build_workflow()
         return runnable.invoke(inputs, config, **kwargs)
 
     def stream(self, inputs, config=None, **kwargs):
@@ -549,5 +564,5 @@ class Workflow:
         # workflow.stream_mode = stream_mode
         config = config or {}
         config["thread_id"] = self._gen_thread_id()
-        runnable = self._enter_graph | workflow
+        runnable = self.build_workflow()
         yield from runnable.stream(inputs, config, **kwargs)

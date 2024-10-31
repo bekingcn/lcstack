@@ -242,6 +242,8 @@ class BaseInitializer(BaseModel):
                 output_mapping=self.initializer_config.data.output_mapping,
                 input_expr=self.initializer_config.data.input_expr,
                 output_expr=self.initializer_config.data.output_expr,
+                history_input_key=self.initializer_config.data.history_input_key,
+                history_output_key=self.initializer_config.data.history_output_key,
             )
 
 

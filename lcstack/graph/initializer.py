@@ -21,14 +21,15 @@ class WorkflowInitializer(BaseInitializer):
         from lcstack import get_config_root
 
         _key = None
-        if "inline" in initializer_data.kwargs:
-            wf_config = initializer_data.kwargs.get("inline")
+        kwargs = initializer_data.kwargs.copy()
+        if "inline" in kwargs:
+            wf_config = kwargs.get("inline")
             _key = "inline" + "#" + wf_config.get("name", "Unknown")[0:4]
-        elif "file" in initializer_data.kwargs:
+        elif "file" in kwargs:
             # TODO: here simple load a yaml file. need to support !SET, !INC, !ENV for a workflow config?
             import yaml
 
-            file = initializer_data.kwargs.get("file")
+            file = kwargs.get("file")
             wf_config = yaml.safe_load(open(get_config_root() / file, "r"))
             _key = "file"
         else:
@@ -37,8 +38,9 @@ class WorkflowInitializer(BaseInitializer):
             )
         # process {{ ref }} patterns
         parsed_workflow = self._parse_value(_key, wf_config, initializer_data)
+        parsed_kwargs = {k: self._parse_value(k, v, initializer_data) for k, v in kwargs.items()}
 
-        workflow_type = initializer_data.kwargs.get("workflow_type", None)
+        workflow_type = kwargs.get("workflow_type", None)
 
         # process `agent config` patterns in `vertices`, which is common for all workflow models
         # must include `vertices` field, process the nested `agent` field
@@ -80,7 +82,7 @@ class WorkflowInitializer(BaseInitializer):
                     )
 
         # this will be used in `create_workflow`
-        self.parsed_kwargs = {"workflow_type": workflow_type, "inline": parsed_workflow}
+        self.parsed_kwargs = {**parsed_kwargs, "workflow_type": workflow_type, "inline": parsed_workflow}
         return self.parsed_kwargs
 
     def _load_from_config_file(self, agent_config: AgentConfig):

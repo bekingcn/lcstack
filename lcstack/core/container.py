@@ -130,11 +130,13 @@ class RunnableContainer(BaseContainer):
         component,
         init_kwargs: dict,
         shared=False,
-        memory: Optional[ChatHistoryFactory] = None,
+        memory: Optional["BaseContainer"] = None,
         input_mapping: Dict[Optional[str], NamedMappingParserArgs] = None,
         output_mapping: Dict[Optional[str], NamedMappingParserArgs] = None,
         input_expr: Optional[str] = None,
         output_expr: Optional[str] = None,
+        history_input_key: Optional[str] = None,
+        history_output_key: Optional[str] = None,
     ):
         super().__init__(
             name,
@@ -143,10 +145,12 @@ class RunnableContainer(BaseContainer):
             shared=shared,
         )
 
-        if memory and not isinstance(self.memory, ChatHistoryFactory):
-            raise ValueError(
-                "The chat history must be an instance of ChatHistoryFactory."
-            )
+        if memory:
+            memory = memory.build()
+            if not isinstance(memory, ChatHistoryFactory):
+                raise ValueError(
+                    "The chat history must be an instance of ChatHistoryFactory."
+                )
         self.memory = memory
         self.inputs: Dict[Optional[str], NamedMappingParserArgs] = self.component.inputs
         self.default_output_parser_args = self.component.default_output_parser_args
@@ -155,6 +159,10 @@ class RunnableContainer(BaseContainer):
         self.input_mapping = input_mapping
         self.input_expr = input_expr
         self.output_expr = output_expr
+
+        # for memory as history input/output key
+        self.history_input_key = history_input_key
+        self.history_output_key = history_output_key
 
     def _get_template_inputs(self) -> Dict[str, str]:
         # trying get the inputs from prompt templates
@@ -169,15 +177,22 @@ class RunnableContainer(BaseContainer):
         return inputs
 
     def _wrap_memory(self, runnable):
-        if isinstance(self.memory, ChatHistoryFactory):
+        if not self.memory:
+            return runnable
+
+        if not isinstance(self.memory, ChatHistoryFactory):
+            raise ValueError(
+                "The `chat history` must be an instance of ChatHistoryFactory."
+            )
+        else:
             # TODO: check types which could not be wrapped with message history
             if self.component.component_type in PromptTemplates:
                 raise ValueError(
-                    "Message history is not supported for prompt templates."
+                    "Chat history is not supported for prompt templates."
                 )
             # TODO: improve this with more input or output info
-            input_messages_key = None
-            output_messages_key = None
+            input_messages_key = self.history_input_key
+            output_messages_key = self.history_output_key
             # TODO: for now, fixed the key name
             history_messages_key = DEFAULT_CHAT_HISTORY_KEY
 
@@ -202,8 +217,6 @@ class RunnableContainer(BaseContainer):
                 output_messages_key=output_messages_key,
                 history_messages_key=history_messages_key,
             ).with_config(name=f"{runnable.name}_memory")
-
-        return runnable
     
     def _wrap_tool(self, runnable):
         _runnable = runnable
