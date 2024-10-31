@@ -1,7 +1,7 @@
 from typing import List, Dict, Tuple, Literal
 
 from langchain_core.language_models import BaseLanguageModel, BaseChatModel
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, AIMessage
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
 
@@ -85,20 +85,31 @@ def create_llm_node(
         input_key: str = "messages", 
         output_key: str = "output", 
         output_type: str = "str",
+        # PRIVATE: used for `build_original` in `BaseContainer` for reference as a llm
+        return_original: bool = False,
         **kwargs
     ):
     if llm is None:
         llm = create_llm(provider, tag=tag, tools=tools, tool_choice=tool_choice, **kwargs)
+    if return_original:
+        return llm
+    # if llm.OutputType not in [str, BaseMessage]:
+    #     raise ValueError(f"Invalid output type with LLM: {llm.OutputType}")
     if output_type in SUPPORTED_OUTPUT_PARSERS:
         post_parser = create_output_parser(type=output_type, output_key=output_key)
+    # TODO: improve lambda? for llm/chatmodel and list of messages
     elif output_type == "message":
-        post_parser = keyed_value_runnable(key=output_key)
+        if llm.OutputType == str:
+            post_parser = (lambda x: AIMessage(content=x)) | keyed_value_runnable(key=output_key)
+        else:
+            post_parser = keyed_value_runnable(key=output_key)
     elif output_type == "messages":
-        # TODO: improve this
-        post_parser = (lambda x: [x]) | keyed_value_runnable(key=output_key)
+        if llm.OutputType == str:
+            post_parser = (lambda x: [AIMessage(content=x)]) | keyed_value_runnable(key=output_key)
+        else:
+            post_parser = (lambda x: [x]) | keyed_value_runnable(key=output_key)
     else:
         raise ValueError(f"Invalid output type: {output_type}")
-
     
     return (dekey_value_runnable(key=input_key) | llm | post_parser).with_config(name="llm_node")
 
